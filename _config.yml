@@ -31,3 +31,11 @@ paginate:       5
 
 # Excludes
 exclude: [ Gemfile, Gemfile.lock ]
+
+# Default layouts
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"

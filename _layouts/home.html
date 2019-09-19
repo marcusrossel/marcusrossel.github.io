@@ -31,5 +31,7 @@ layout: default
     <a href="{{ paginator.next_page_path | prepend: site.baseurl }}" class="right arrow">&#8594;</a>
   {% endif %}
 
+  {% if paginator.total_pages > 1 %}
   <span>{{ paginator.page }}</span>
+  {% endif %}
 </div>
