@@ -1,0 +1,17 @@
+<nav class="nav">
+  <div class="nav-container">
+    <a href="{{ site.baseurl }}/">
+      <h2 class="nav-title">{{ site.title }}</h2>
+    </a>
+      <p class="nav-subtitle">{{ site.description }}</p>
+    <ul>
+      {% for item in site.data.navigation %}
+        <li>
+          <a href="{{ item.link | prepend: site.baseurl }}" {% if page.url == item.link %}style="color:#4a9ae1"{% endif %}>
+            {{ item.name }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</nav>

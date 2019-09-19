@@ -1,0 +1,33 @@
+# Site settings
+title:          marcus'
+description:    "Sporadic articles about the things I'm learning."
+url:            "https://marcusrossel.github.io"
+
+# Author
+author:
+  name:         Marcus Rossel
+  url:          https://marcusrossel.github.io
+
+# Build settings
+markdown:       kramdown
+include:
+  - _pages
+
+# Assets
+sass:
+  sass_dir:     _sass
+  style:        compressed
+
+# Gems
+plugins:
+  - jekyll-feed
+  - jekyll-paginate
+  - jekyll-seo-tag
+  - jemoji
+
+# Permalinks
+permalink:      /:year-:month-:day/:title
+paginate:       5
+
+# Excludes
+exclude: [ Gemfile, Gemfile.lock ]
