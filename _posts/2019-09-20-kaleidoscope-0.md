@@ -2,26 +2,26 @@
 title: "Implementing LLVM's Kaleidoscope in Swift - Part 0"
 ---
 
-When  deciding to write this story I was expecting to start by saying something along the lines of *"I know there are already many tutorials for writing Kaleidoscope in Swift, but here's another one."* - Turns out, there's not. The only one I could find was [this one](https://harlanhaskins.com/2017/01/08/building-a-compiler-with-swift-in-llvm-part-1-introduction-and-the-lexer.html) by [Harlan Haskins](http://twitter.com/harlanhaskins). And while Harlan's tutorial is definetly worth checking out, it sometimes glosses over details which I had to figure out by using other resources. What I therefore hope to do with this series of posts, is to create a unified resource for learning how to implement [LLVM](https://llvm.org)'s tutorial language _Kaleidoscope_. The goal of this series is of course not just to create a working compiler for Kaleidoscope, but to learn how compilers can be built _in general_ using the LLVM infastructure.  
-Knowledge of the [Swift](https://swift.org) programming language is not necessarily required, but will definetly be helpful for this specific tutorial. If you prefer another language, you probably won't be hard pressed to find a Kaleidoscope tutorial for it as well.
+When  deciding to write this story I was expecting to start by saying something along the lines of *"I know there are already many tutorials for writing Kaleidoscope in Swift, but here's another one."* - Turns out, there's not. The only one I could find was [this one](https://harlanhaskins.com/2017/01/08/building-a-compiler-with-swift-in-llvm-part-1-introduction-and-the-lexer.html) by [Harlan Haskins](http://twitter.com/harlanhaskins). And while Harlan's tutorial is definitely worth checking out, it sometimes glosses over details which I had to figure out by using other resources. What I therefore hope to do with this series of posts, is to create a unified resource for learning how to implement [LLVM](https://llvm.org)'s tutorial language _Kaleidoscope_. The goal of this series is of course not just to create a working compiler for Kaleidoscope, but to learn how compilers can be built _in general_ using the LLVM infrastructure.  
+Knowledge of the [Swift](https://swift.org) programming language is not necessarily required, but will definitely be helpful for this specific tutorial. If you prefer another language, you probably won't be hard pressed to find a Kaleidoscope tutorial for it as well.
 
 *As a short disclaimer - I'm no expert on the topics I will be writing about. I'm going to try to explain my approach to learning about them, but I'll probably make mistakes. If you feel like something does not sound correct, do go and consult other resources! If you find mistakes, please report them on this [post's GitHub page](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/_posts). Thanks!*
 
 # LLVM
 
-If you've stumbled upon this post without knowing what LLVM is, this section is for you - if you already know, skip to the next one. [➡](#language-grammar)  
+If you've stumbled upon this post without knowing what LLVM is, this section is for you - if you already know, skip to the next one. [→](#language-grammar)  
 
 In the book *The Architecture of Open Source Applications* [Chris Lattner](), the original creator of LLVM, has written a [chapter introducing the LLVM project](http://www.aosabook.org/en/llvm.html) to newcomers. In it he explains a fundamental problem with compiler design, that LLVM intends to solve:  
 Let's assume you want to write a new programming language. The way you would traditionally go about this is by writing
 
-1. a frontend able to convert source code into some structured, interal representation
-2. an optimizer which changes the code to run more efficienciently
+1. a frontend able to convert source code into some structured, internal representation
+2. an optimizer which changes the code to run more efficiently
 3. a backend which generates the machine code instructions for each target platform (x86, ARM, PowerPC, ...)
 
 ![Compiler Pipeline](http://www.aosabook.org/images/llvm/SimpleCompiler.png)
 
 While this design works well for any given language, it is rather inefficient when considering the space of _all_ languages. The inefficiency really results from steps 2 and 3.  
-Writing a good optimizer is no trivial task. First of all, you have to be able to figure out what you can change about a program's _code_, without changing its _behaviour_. And once you know _what_ you can safely change in a program's code, you have to figure out _how_ to change it in order to increase efficiency. This can be a deeply mathematical process and is therefore not well suited for casual programmers.  
+Writing a good optimizer is no trivial task. First of all, you have to be able to figure out what you can change about a program's _code_, without changing its _behavior_. And once you know _what_ you can safely change in a program's code, you have to figure out _how_ to change it in order to increase efficiency. This can be a deeply mathematical process and is therefore not well suited for casual programmers.  
 Writing compiler backends produces a different problem: there are many target architectures. If you want to create a programming language that will actually be relevant, your backend needs to be able to generate machine instructions for as many of them as possible. The following list of LLVM's supported target architectures should give you an idea of why this might be difficult though:
 
 ```
@@ -71,7 +71,7 @@ LLVM (http://llvm.org/):
 What LLVM therefore aims to do, is to remove steps 2 and 3 from your compiler design process. Neither do you need to be able to write an optimizer, nor a backend targeting 33 different architectures. LLVM just does that for you:
 
 ![LLVM Compiler Pipeline](http://www.aosabook.org/images/llvm/LLVMCompiler1.png)
-  
+
 You do need to help out LLVM a bit though, by passing your program to it using the _LLVM Intermediate Representation (LLVM IR)_. Because, just as step 1 required us to create some _"structured, internal representation"_ of our program, LLVM also needs some internal representation of a program in order to reason about it.
 
 So all we have to do now in order to create a working compiler is to write a frontend and generate LLVM IR. And in the process we get the power of a top-of-the-line optimizer as well as a host of target architectures.  
@@ -79,17 +79,17 @@ Not without reason do [notable companies](https://llvm.org/Users.html)  rely and
 
 # <a name="language-grammar"></a>Language Grammar
 
-This section begins with some rather theoretical aspects of programming languages. It is in no way required for the rest of the tutorial, so if you'd rather skip it, go right ahead. [➡](#kaleidoscope-grammar) 
+This section begins with some rather theoretical aspects of programming languages. It is in no way required for the rest of the tutorial, so if you'd rather skip it, go right ahead. [→](#kaleidoscope-grammar)
 
 ## Formal Languages
 
-A programming languages is what is known as a _"formal language"_ in theoretical computer science. Wikipedia defines a [formal language](https://en.wikipedia.org/wiki/Formal_language) as: 
+A programming language is what is known as a _"formal language"_ in theoretical computer science. Wikipedia defines a [formal language](https://en.wikipedia.org/wiki/Formal_language) as:
 
 > ... consist[ing] of words whose letters are taken from an alphabet and are well-formed according to a specific set of rules.
 
 While this might sound a bit vague, it actually tells us a lot about the structure of formal languages. Let's unpack it:
 
-### Alphabet 
+### Alphabet
 
 The alphabet of a formal language is the set of symbols (characters) that are allowed within the language. This should be very intuitive when comparing to spoken languages. For example, words in the English language will never contain the symbol `ö`, because it is not part of the English alphabet. German on the other hand has `ö` in its alphabet, which is why German words can use that symbol. It's that simple.
 
@@ -105,7 +105,7 @@ Formal languages on the other hand _do_ have a system for describing which seque
 Let's look at some examples using [BNF notation](https://en.wikipedia.org/wiki/Backus–Naur_form):
 
 ```
-<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" 
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 ```
 
 This is a formation rule which defines what a `digit` is (syntactically). It states that a `digit` can either be the symbol `0` or `1` or `2` ... or `9`. That's it. In a way we have defined the _language_ of digits, by simply listing all of its words. If someone would give us the sequence `123`, we could deduce that it is not a valid digit, as the formation rule above does not allow us to generate `123`.  
@@ -127,7 +127,7 @@ The formation rule for `digit` constrained our words to just be single symbols. 
 → "1" "2" <integer>
 → "1" "2" <digit>
 → "1" "2" "3"
-``` 
+```
 
 By combining multiple formation rules we have started building a language _grammar_. Programming languages are also defined by a grammar.
 
@@ -154,14 +154,14 @@ And just for completeness, I'm going to add the following rule:
 <kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
 ```
 
-The symbol `kaleidoscope` now defines the entirety of the Kaleidoscope language. Every valid Kaleidoscope program can be generated by starting with the `kaleidoscope` symbol and performing substitutions according to the formation rules. (Some invalid programs can be generated as well, which we will deal with later.) 
+The symbol `kaleidoscope` now defines the entirety of the Kaleidoscope language. Every valid Kaleidoscope program can be generated by starting with the `kaleidoscope` symbol and performing substitutions according to the formation rules. (Some invalid programs can be generated as well, which we will deal with later.)
 
 The rules below define the symbols `identifier` and `number`, as they are not actually defined above.
 
 ```
-<identifier> ::= <identifier-chars> | <identifier> <identifier-body>
-<identifier-body> ::= <identifier-chars> | <digit>
-<identifier-chars> ::= #Foundation.CharacterSet.letter# | "_"
+<identifier> ::= <identifier-head> | <identifier> <identifier-body>
+<identifier-body> ::= <identifier-head> | <digit>
+<identifier-head> ::= #Foundation.CharacterSet.letter# | "_"
 <number> ::= <digits> | <digits> "." <digits>
 <digits> ::= <digit> | <digit> <digits>
 <digit> ::= "0" | "1" | ... | "9"
@@ -206,16 +206,16 @@ import PackageDescription
 
 let package = Package(
     name: "Kaleidoscope",
-    
+
     products: [
         .executable(
             name: "Kaleidoscope",
             targets: ["Kaleidoscope"]
         ),
     ],
-    
+
     dependencies: [ ],
-    
+
     targets: [
         .target(
             name: "KaleidoscopeLib",
@@ -264,5 +264,3 @@ Lastly the IR Generator will use symbols produced by the parser to generate LLVM
 Don't worry if you didn't understand any of that yet - we will go into more detail about each of these components in their respective posts.
 
 Until then, thanks for reading!
-
-

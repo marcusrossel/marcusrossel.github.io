@@ -17,11 +17,11 @@ layout: default
 </div>
 
 <div class="pagination">
-  {% if page.next.url %}
-    <a href="{{ page.next.url | prepend: site.baseurl }}" class="left arrow">←</a>
-  {% endif %}
   {% if page.previous.url %}
-    <a href="{{ page.previous.url | prepend: site.baseurl }}" class="right arrow">→</a>
+    <a href="{{ page.previous.url | prepend: site.baseurl }}" class="left arrow">←</a>
+  {% endif %}
+  {% if page.next.url %}
+    <a href="{{ page.next.url | prepend: site.baseurl }}" class="right arrow">→</a>
   {% endif %}
 
   <a href="#" class="top">↥</a>

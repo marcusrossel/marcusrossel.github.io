@@ -31,7 +31,7 @@ Special Symbol: ";"
 ```
 
 So the job of our lexer is to take the _character_ representation of our source code and turn it into a _token_ representation.  
-Because programming languages are formal languages, we again need to have certain rules that tell us how to group characters into tokens. Luckily we've pretty much alread written those rules.
+Because programming languages are formal languages, we again need to have certain rules that tell us how to group characters into tokens. Luckily we've pretty much already written those rules.
 
 # Grammar Adjustments
 
@@ -65,7 +65,7 @@ As we've just learned the lexer is responsible for creating tokens from raw char
 ```
 
 Now the lexer is dealing mainly with what we call *teminal symbols* - that is raw characters (written between `""` in BNF notation). As we will see later on in this tutorial, we want our parser to only deal with *non-terminal symbols* - that is symbols constructed from other symbols (written between `<>` in BNF notation).  
-Our current grammar does not quite fulfil this requirement yet, so we will modify it like this:
+Our current grammar does not quite fulfill this requirement yet, so we will modify it like this:
 
 ```plaintext
 // Lexer:
@@ -303,13 +303,13 @@ public final class Lexer {
         while nextCharacter(peek: true).isPartOf(.whitespacesAndNewlines) {
             _ = self.nextCharacter()
         }
-        
+
         return nil
     }
 }
 
 extension Character {
-    
+
     /// Indicates whether the given character set contains this character.
     func isPartOf(_ set: CharacterSet) -> Bool {
         return String(self).rangeOfCharacter(from: set) != nil
@@ -317,7 +317,7 @@ extension Character {
 }
 
 extension Optional where Wrapped == Character {
-    
+
     /// Indicates whether the given character set contains this character.
     /// If `self == nil` this is false.
     func isPartOf(_ set: CharacterSet) -> Bool {
@@ -337,17 +337,17 @@ public final class Lexer {
 
     private func lexSpecialSymbolsAndOperators() -> Token? {
         guard let character = nextCharacter(peek: true) else { return nil }
-        
+
         if let specialSymbol = Token.Symbol(rawValue: character) {
             _ = nextCharacter()
             return .symbol(specialSymbol)
         }
-        
+
         if let `operator` = Operator(rawValue: character) {
             _ = nextCharacter()
             return .operator(`operator`)
         }
-        
+
         return nil
     }
 }
@@ -367,12 +367,12 @@ public final class Lexer {
 
     /// The set of characters allowed as an identifier's body.
     private let identifierBody: CharacterSet
-    
+
     /// Creates a lexer for the given text, with a starting position of `0`.
     public init(text: String) {
         self.text = text
         position = 0
-        
+
         identifierHead = CharacterSet
             .letters
             .union(CharacterSet(charactersIn: "_"))
@@ -385,9 +385,9 @@ public final class Lexer {
         guard nextCharacter(peek: true).isPartOf(identifierHead) else {
             return nil
         }
-        
+
         var buffer = "\(nextCharacter()!)"
-        
+
         while nextCharacter(peek: true).isPartOf(identifierBody) {
             buffer.append(nextCharacter()!)
         }
@@ -422,27 +422,27 @@ public final class Lexer {
         guard nextCharacter(peek: true).isPartOf(.decimalDigits) else {
             return nil
         }
-        
+
         var buffer = "\(nextCharacter()!)"
-        
+
         while nextCharacter(peek: true).isPartOf(.decimalDigits) {
             buffer.append(nextCharacter()!)
         }
-        
+
         if nextCharacter(peek: true) == "." &&
            nextCharacter(peek: true, stride: 2).isPartOf(.decimalDigits)
         {
             buffer.append(".\(nextCharacter(stride: 2)!)")
-            
+
             while nextCharacter(peek: true).isPartOf(.decimalDigits) {
                 buffer.append(nextCharacter()!)
             }
         }
-        
+
         guard let number = Double(buffer) else {
             fatalError("Lexer Error: \(#function): internal error.")
         }
-        
+
         return .number(number)
     }
 }
