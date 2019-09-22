@@ -197,6 +197,12 @@ Creating Tests/KaleidoscopeTests/KaleidoscopeTests.swift
 Creating Tests/KaleidoscopeTests/XCTestManifests.swift
 ```
 
+---
+
+If you want to use Xcode as your IDE, you can call `swift package generate-xcodeproj` to generate a `.xcodeproj` file for this project. As Xcode does not necessarily update according to the changes we're about to make, I recommend this *after* we've completed the following steps though.
+
+---
+
 We will split our package into two targets, `Kaleidoscope` which will become an executable (the compiler), and `KaleidoscopeLib` which will be the library containing almost all of the logic of the compiler. We need to do this, because testing an executable is currently not possible using SPM. So our `Package.swift` manifest file has to look like this:
 
 ```swift

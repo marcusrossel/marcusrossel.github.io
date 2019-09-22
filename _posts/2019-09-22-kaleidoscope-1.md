@@ -122,7 +122,7 @@ Our lexer needs to have some basic properties. It needs to hold the source code 
 public final class Lexer {
 
     /// The plain text, which will be lexed.
-    public private(set) var text: String
+    public let var text: String
 
     /// The position of the next relevant character in `text`.
     public private(set) var position: Int
@@ -298,7 +298,7 @@ public final class Lexer {
 
     // ...
 
-	/// Consumes whitespace (and newlines). Always returns `nil`.
+    /// Consumes whitespace (and newlines). Always returns `nil`.
     private func lexWhitespace() -> Token? {
         while nextCharacter(peek: true).isPartOf(.whitespacesAndNewlines) {
             _ = self.nextCharacter()
@@ -463,3 +463,271 @@ Finally we convert the string representation of the number into a `Double` and r
 The conversion from the `String` to `Double` should actually never fail, which is why we `fatalError` if it does.
 
 # Testing the Lexer
+
+As for any project ever, we're of course going to write tests, right? 😉  
+No seriously, although I have never actually practised [TDD](https://en.wikipedia.org/wiki/Test-driven_development), a lexer definitely deserves some tests. Lexing has a lot of edge cases which might go wrong, so we want to make sure we catch those.
+
+## Testing With SPM
+
+When we created our project, SPM already created a `Tests` directory for us. It should contain a directory called `KaleidoscopeTests`. We are actually going to test `KaleidoscopeLib` though - and more specifically the `Lexer`. So we'll change some file and folder names to reflect this:
+
+```shell
+marcus@Tests: mv KaleidoscopeTests/ KaleidoscopeLibTests
+marcus@Tests: ls
+LinuxMain.swift	KaleidoscopeLibTests
+marcus@Tests: cd KaleidoscopeLibTests/
+marcus@KaleidoscopeLibTests: mv KaleidoscopeTests.swift LexerTests.swift
+marcus@KaleidoscopeLibTests: ls
+LexerTests.swift	XCTestManifests.swift
+```
+
+---
+
+`LinuxMain.swift` and `XCTestManifests.swift` are required for testing Swift on Linux. [Ole Begemann](https://twitter.com/olebegemann) has a great [post](https://oleb.net/blog/2017/03/keeping-xctest-in-sync/) about this:
+
+> Any unit testing framework must be able to find the tests it should run. On Apple platforms, the XCTest framework uses the Objective-C runtime to enumerate all test suites and their methods in a test target. Since the Objective-C runtime is not available on Linux and the Swift runtime currently lacks equivalent functionality, XCTest on Linux requires the developer to provide an explicit list of tests to run.
+
+So we'll use the `LinuxMain.swift` and `XCTestManifests.swift` files to just list all of our test cases.  
+I remember reading on the Swift Forums that someone had already implemented a PR that would fix this problem entirely - but I can't find the post anymore. Anyway, this problem is definitely just a temporary one.
+
+---
+
+Now we have to update the `LexerTests.swift`. We need to import the `KaleidoscopeLib` and rename the test class:
+
+```swift
+import XCTest
+@testable import KaleidoscopeLib
+
+final class LexerTests: XCTestCase {
+
+    static var allTests = []
+}
+```
+
+We'll update the Linux-specific files later.
+
+## Writing Test Cases
+
+I'm not an expert on writing unit tests. And it seems to be an area of almost philosophical discussion anyway - so if you want to write your tests differently, go right ahead. I'm also not going to comment much on these tests. They're mainly here so you don't have to write them yourself.
+
+The first two tests show something useful about `XCTest` assertions right away:
+
+```swift
+final class LexerTests: XCTestCase {
+
+    // ...
+
+    func testEmptyText() {
+        let lexer = Lexer(text: "")
+        XCTAssertNil(try lexer.nextToken())
+    }
+
+    func testWhitespace() {
+        let lexer = Lexer(text: "   \n ")
+        XCTAssertNil(try lexer.nextToken())
+    }
+}
+```
+
+`XCTest` assertions wrap their parameters in [autoclosures](https://www.swiftbysundell.com/articles/using-autoclosure-when-designing-swift-apis/) that are marked with `throws`. This means that we can pass any value, even the result of a throwing function, and the assertion will handle it. If the wrapped function throws when not expected, the assertion fails.
+
+We can also use this to assert that a function call *does* throw:
+
+```swift
+final class LexerTests: XCTestCase {
+
+    // ...
+
+    func testInvalidCharacters() {
+        let lexer = Lexer(text: "?! a")
+
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertNotNil(try lexer.nextToken())
+        XCTAssertNil(try lexer.nextToken())
+    }
+}
+```
+
+Here we first check that the lexer does throw an error when lexing the invalid character `?`. As `Lexer.Error` only has one case, we won't check *what* error was thrown, only *that* an error was thrown.  
+In the second example we also make sure the lexer keeps working after lexing the invalid character, by adding *some* character which we know to be valid. We don't check *which* token is produced from that character yet, because this is not the responsibility of this specific test. We only check *that* a token is produced by calling `XCTAssertNotNil`.
+
+Our next test case will require us to actually check *which* tokens are produced by the lexer. In order to do this we need to be able to compare tokens - they need to be equatable. So before writing the test, let's add the necessary conformances:
+
+```swift
+// Lexer.swift
+
+extension Token: Equatable { }
+extension Token.Keyword: Equatable { }
+extension Token.Symbol: Equatable { }
+extension Operator: Equatable { }
+```
+
+Now our remaining tests can use `XCTAssertEqual` to compare tokens:
+
+```swift
+final class LexerTests: XCTestCase {
+
+    // ...
+
+    func testSpecialSymbols() {
+        let lexer = Lexer(text: "( ) : , ;")
+
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.leftParenthesis))
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.rightParenthesis))
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.comma))
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.semicolon))
+        XCTAssertNil(try lexer.nextToken())
+    }
+
+    func testOperators() {
+        let lexer = Lexer(text: "+-*/%")
+
+        XCTAssertEqual(try lexer.nextToken(), .operator(.plus))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.minus))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.times))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.divide))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.modulo))
+        XCTAssertNil(try lexer.nextToken())
+    }
+
+    func testIdentifiersAndKeywords() {
+        let lexer = Lexer(text: "_012 _def def0 define def extern if then else")
+
+        XCTAssertEqual(try lexer.nextToken(), .identifier("_012"))
+        XCTAssertEqual(try lexer.nextToken(), .identifier("_def"))
+        XCTAssertEqual(try lexer.nextToken(), .identifier("def0"))
+        XCTAssertEqual(try lexer.nextToken(), .identifier("define"))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.definition))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.external))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.if))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.then))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.else))
+        XCTAssertNil(try lexer.nextToken())
+    }
+
+    func testNumbers() {
+        let lexer = Lexer(text: "0 -123 3.14 42. .50 123_456")
+
+        XCTAssertEqual(try lexer.nextToken(), .number(0))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.minus))
+        XCTAssertEqual(try lexer.nextToken(), .number(123))
+        XCTAssertEqual(try lexer.nextToken(), .number(3.14))
+        XCTAssertEqual(try lexer.nextToken(), .number(42))
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertEqual(try lexer.nextToken(), .number(50))
+        XCTAssertEqual(try lexer.nextToken(), .number(123))
+        XCTAssertNotNil(try lexer.nextToken())
+        XCTAssertNil(try lexer.nextToken())
+    }
+
+    func testComplex() {
+        let lexer = Lexer(text: "def_function.extern (123*x^4.5\nifthenelse;else\t")
+
+        XCTAssertEqual(try lexer.nextToken(), .identifier("def_function"))
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.external))
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.leftParenthesis))
+        XCTAssertEqual(try lexer.nextToken(), .number(123))
+        XCTAssertEqual(try lexer.nextToken(), .operator(.times))
+        XCTAssertEqual(try lexer.nextToken(), .identifier("x"))
+        XCTAssertThrowsError(try lexer.nextToken())
+        XCTAssertEqual(try lexer.nextToken(), .number(4.5))
+        XCTAssertEqual(try lexer.nextToken(), .identifier("ifthenelse"))
+        XCTAssertEqual(try lexer.nextToken(), .symbol(.semicolon))
+        XCTAssertEqual(try lexer.nextToken(), .keyword(.else))
+        XCTAssertNil(try lexer.nextToken())
+    }
+}
+```
+
+As you can see, some cases seem like they should not be valid, but don't fail. For example we'll never want to accept a program containing `+-*/%`, but our lexer is ok with it. This is ok, because it's not the job of the lexer to understand which combinations of tokens are allowed. This is the job of the parser, which we will implement in the next post.
+
+## Running Tests
+
+Before we finish up this post we need to make sure our test are not failing.  
+In our `LexerTests` class we need to add all of our test cases to `allTests`:
+
+```swift
+final class LexerTests: XCTestCase {}
+
+    static var allTests = [
+        ("testEmptyText", testEmptyText),
+        ("testWhitespace", testWhitespace),
+        ("testInvalidCharacters", testInvalidCharacters),
+        ("testSpecialSymbols", testSpecialSymbols),
+        ("testOperators", testOperators),
+        ("testIdentifiersAndKeywords", testIdentifiersAndKeywords),
+        ("testNumbers", testNumbers),
+        ("testComplex", testComplex),
+    ]
+
+    // ...
+}
+```
+
+The `XCTestManifests.swift` needs to be updated to use `LexerTests`:
+
+```swift
+import XCTest
+
+#if !canImport(ObjectiveC)
+public func allTests() -> [XCTestCaseEntry] {
+    return [
+        testCase(LexerTests.allTests),
+    ]
+}
+#endif
+```
+
+And the finally the `LinuxMain.swift` needs to be updated, to use `KaleidoscopeLibTests`:
+
+```swift
+import XCTest
+
+import KaleidoscopeLibTests
+
+var tests = [XCTestCaseEntry]()
+tests += KaleidoscopeLibTests.allTests()
+XCTMain(tests)
+```
+
+If you're using Xcode for this project, and called `swift package generate-xcodeproj` to generate the `.xcodeproj` file, the `LinuxMain.swift` might not show up in Xcode's project navigator. As these steps are only necessary for testability on Linux anyway, you can also just skip them.
+
+Once our test manifest files are updated, we can run `swift test` from inside the package directory:
+
+```shell
+marcus@Kaleidoscope: swift test
+[2/2] Linking ./.build/x86_64-apple-macosx/debug/KaleidoscopePackageTests.xctest/Contents/MacOS/KaleidoscopePackageTests
+Test Suite 'All tests' started at 2019-09-22 12:39:46.153
+Test Suite 'KaleidoscopePackageTests.xctest' started at 2019-09-22 12:39:46.154
+Test Suite 'LexerTests' started at 2019-09-22 12:39:46.154
+Test Case '-[KaleidoscopeLibTests.LexerTests testComplex]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testComplex]' passed (0.133 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testEmptyText]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testEmptyText]' passed (0.000 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testIdentifiersAndKeywords]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testIdentifiersAndKeywords]' passed (0.000 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testInvalidCharacters]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testInvalidCharacters]' passed (0.001 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testNumbers]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testNumbers]' passed (0.000 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testOperators]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testOperators]' passed (0.000 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testSpecialSymbols]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testSpecialSymbols]' passed (0.000 seconds).
+Test Case '-[KaleidoscopeLibTests.LexerTests testWhitespace]' started.
+Test Case '-[KaleidoscopeLibTests.LexerTests testWhitespace]' passed (0.000 seconds).
+Test Suite 'LexerTests' passed at 2019-09-22 12:39:46.290.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.136 (0.136) seconds
+Test Suite 'KaleidoscopePackageTests.xctest' passed at 2019-09-22 12:39:46.290.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.136 (0.136) seconds
+Test Suite 'All tests' passed at 2019-09-22 12:39:46.290.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.136 (0.137) seconds
+```
+
+All tests are passing! We can now lex the tokens required for Kaleidoscope. Next post we will use those tokens in our parser, to construct the higher-level symbols of the language.
+
+Until then, thanks for reading!
