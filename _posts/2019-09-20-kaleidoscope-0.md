@@ -199,7 +199,7 @@ Creating Tests/KaleidoscopeTests/XCTestManifests.swift
 
 ---
 
-If you want to use Xcode as your IDE, you can call `swift package generate-xcodeproj` to generate a `.xcodeproj` file for this project. As Xcode does not necessarily update according to the changes we're about to make, I recommend this *after* we've completed the following steps though.
+If you want to use Xcode as your IDE, you can call `swift package generate-xcodeproj` to generate a `.xcodeproj` file for this project. As Xcode does not necessarily update according to the changes we're about to make, I recommend doing this *after* we've completed the following steps.
 
 ---
 
