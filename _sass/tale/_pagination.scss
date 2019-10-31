@@ -1,19 +1,19 @@
 .pagination {
-  border-top: .5px solid $grey-2;
+  border-top: .5px solid var(--grey-2);
   font-family: $sans-serif;
   padding-top: 2rem;
   position: relative;
   text-align: center;
 
   span {
-    color: $default-shade;
+    color: var(--default-shade);
     opacity: 0.85;
     font-size: 1.05rem;
   }
 
   .top {
     @include transition(all .3s ease-out);
-    color: $blue;
+    color: var(--blue);
     font-family: $sans-serif;
     font-size: 1.3rem;
     line-height: 1;
@@ -25,7 +25,7 @@
 
   .arrow {
     @include transition(all .3s ease-out);
-    color: $blue;
+    color: var(--blue);
     position: absolute;
     font-size: 1.3rem;
     line-height: 1;

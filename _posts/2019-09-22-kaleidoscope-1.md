@@ -471,7 +471,7 @@ No seriously, although I have never actually practised [TDD](https://en.wikipedi
 
 When we created our project, SPM already created a `Tests` directory for us. It should contain a directory called `KaleidoscopeTests`. We are actually going to test `KaleidoscopeLib` though - and more specifically the `Lexer`. So we'll change some file and folder names to reflect this:
 
-```shell
+```terminal
 marcus@Tests: mv KaleidoscopeTests/ KaleidoscopeLibTests
 marcus@Tests: ls
 LinuxMain.swift	KaleidoscopeLibTests
@@ -698,7 +698,7 @@ If you're using Xcode for this project, and called `swift package generate-xcode
 
 Once our test manifest files are updated, we can run `swift test` from inside the package directory:
 
-```shell
+```terminal
 marcus@Kaleidoscope: swift test
 [2/2] Linking ./.build/x86_64-apple-macosx/debug/KaleidoscopePackageTests.xctest/Contents/MacOS/KaleidoscopePackageTests
 Test Suite 'All tests' started at 2019-09-22 12:39:46.153

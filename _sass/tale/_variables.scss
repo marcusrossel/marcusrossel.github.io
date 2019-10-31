@@ -1,14 +1,63 @@
-// Colors
-$default-color: #555;
-$default-shade: #353535;
-$default-tint: #aaa;
-$grey-1: #979797;
-$grey-2: #e5e5e5;
-$grey-3: #f9f9f9;
-$white: #fff;
-$blue: #4a9ae1;
-$shadow-color: rgba(0, 0, 0, .2);
-$code-color: #bf616a;
+// Light mode colors.
+html, html[data-theme="light"], {
+    --main-background-color: #fff;
+    --default-color: #555;
+    --default-shade: #353535;
+    --default-tint: #aaa;
+    --grey-1: #909090;
+    --grey-2: #e5e5e5;
+    --grey-3: #f9f9f9;
+    --blue: #4a9ae1;
+    --code-color: #bf616a;
+    --image-inversion: 10%;
+
+    // Code colors.
+    --comment: #999;
+    --keyword: #DF3F90;
+    --string: #EC552D;
+    --number: #795BE0;
+    --preprocessor: #F57939;
+    --typedecl: #05B3E5;
+    --declaration: #109190;
+    --classname: #9EF1DD;
+    --attribute: #BF8555;
+    --builtin: #FDEF3F;
+    --generic: #777;
+}
+
+// Used for dark mode.
+@media (prefers-color-scheme: dark) {
+    html {
+      content: "dark";
+    }
+}
+
+// Dark mode colors.
+html[data-theme="dark"] {
+    --main-background-color: #181818;
+    --default-color: #d5d5d5;
+    --default-shade: #f8f8f8;
+    --default-tint: #666;
+    --grey-1: #979797;
+    --grey-2: #e5e5e5;
+    --grey-3: #222222;
+    --blue: #4bAbf2;
+    --code-color: #bf616a;
+    --image-inversion: 90%;
+
+    // Code colors.
+    --comment: #666;
+    --keyword: #FC5FA3;
+    --string: #FC6A5D;
+    --number: #9686F5;
+    --preprocessor: #FD8F3F;
+    --typedecl: #18C3FF;
+    --declaration: #41A1C0;
+    --classname: #9EF1DD;
+    --attribute: #BF8555;
+    --builtin: #FDEF3F;
+    --generic: #aaa;
+}
 
 // Fonts
 $serif-primary: 'Libre Baskerville', 'Times New Roman', Times, serif;

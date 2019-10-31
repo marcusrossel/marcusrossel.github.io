@@ -27,7 +27,7 @@ footer {
 }
 
 .nav {
-  box-shadow: 0 2px 2px -2px $shadow-color;
+  box-shadow: 0 2px 2px -2px var(--blue); // COLOR: Navigation bar seperator line.
   overflow: auto;
 
   &-container {
@@ -38,7 +38,7 @@ footer {
 
   &-title {
     @include transition(all .2s ease-out);
-    color: $blue;
+    color: var(--blue); // COLOR: Site title.
     display: inline-block;
     font-size: 3rem;
     margin: 0;
@@ -53,7 +53,7 @@ footer {
 
   &-subtitle {
     line-height: 1;
-    color: $grey-1;
+    color: var(--grey-1); // COLOR: Site subtitle.
     font-family: $sans-serif;
   }
 
@@ -66,7 +66,7 @@ footer {
 
   li {
     @include transition(all .2s ease-out);
-    color: $default-color;
+    color: var(--default-color); // COLOR: Unknown.
     display: inline-block;
     opacity: .6;
     padding: 0 2rem 0 0;
@@ -82,13 +82,13 @@ footer {
   }
 
   a {
-    color: $default-color;
+    color: var(--default-color); // COLOR: Unselected navigation bar item.
     font-family: $sans-serif;
   }
 
   &-selected {
       a {
-        color: $blue;
+        color: var(--blue); // COLOR: Selected navigation bar item.
       }
   }
 }
@@ -113,7 +113,7 @@ footer {
   text-align: center;
 
   span {
-    color: $default-color;
+    color: var(--default-color); // COLOR: Site footer text.
     font-size: .8rem;
   }
 }

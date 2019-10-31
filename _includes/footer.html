@@ -1,10 +1,47 @@
 <footer>
-  <span>
-      <a href="/feed.xml">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/d/dc/Rss_font_awesome.svg" alt="RSS Feed" width="20" height="20" style="float: right;">
+    <span>
+      &copy; <time datetime="{{ site.time }}">{{ site.time | date: '%Y' }}</time> {{ site.author.name }}. Made with Jekyll using a modified <a href="https://github.com/chesterhow/tale/">Tale</a> theme. <a href="https://github.com/chesterhow/tale/">
       </a>
+    </span>
 
-    &copy; <time datetime="{{ site.time }}">{{ site.time | date: '%Y' }}</time> {{ site.author.name }}. Made with Jekyll using a modified <a href="https://github.com/chesterhow/tale/">Tale</a> theme. <a href="https://github.com/chesterhow/tale/">
-    </a>
+  <span>
+  <button id="theme-toggle" onclick="modeSwitcher()" style="text-align: center; float: right; color: var(--default-shade); background: none; border-color: var(--default-shade); border-radius: .5rem; margin: 0; padding: .15rem; cursor: pointer; font-size: .8rem;">
+  </button>
+
+  <a href="/feed.xml">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/d/dc/Rss_font_awesome.svg" alt="RSS Feed" height=25px style="float: right; filter: invert(var(--image-inversion)); margin: .08rem 2rem;">
+  </a>
   </span>
+
+  <!-- Used for dark mode. -->
+  <script>
+  const userPrefers = getComputedStyle(document.documentElement).getPropertyValue('content');
+
+  if (theme === "dark") {
+  	document.getElementById("theme-toggle").innerHTML = "Light Mode";
+  } else if (theme === "light") {
+  	document.getElementById("theme-toggle").innerHTML = "Dark Mode";
+  } else if  (userPrefers === "dark") {
+  	document.documentElement.setAttribute('data-theme', 'dark');
+  	window.localStorage.setItem('theme', 'dark');
+  	document.getElementById("theme-toggle").innerHTML = "Light Mode";
+  } else {
+  	document.documentElement.setAttribute('data-theme', 'light');
+  	window.localStorage.setItem('theme', 'light');
+  	document.getElementById("theme-toggle").innerHTML = "Dark Mode";
+  }
+
+  function modeSwitcher() {
+  	let currentMode = document.documentElement.getAttribute('data-theme');
+  	if (currentMode === "dark") {
+  		document.documentElement.setAttribute('data-theme', 'light');
+  		window.localStorage.setItem('theme', 'light');
+  		document.getElementById("theme-toggle").innerHTML = "Dark Mode";
+  	} else {
+  		document.documentElement.setAttribute('data-theme', 'dark');
+  		window.localStorage.setItem('theme', 'dark');
+  		document.getElementById("theme-toggle").innerHTML = "Light Mode";
+  	}
+  };
+  </script>
 </footer>

@@ -24,7 +24,7 @@ While this design works well for any given language, it is rather inefficient wh
 Writing a good optimizer is no trivial task. First of all, you have to be able to figure out what you can change about a program's _code_, without changing its _behavior_. And once you know _what_ you can safely change in a program's code, you have to figure out _how_ to change it in order to increase efficiency. This can be a deeply mathematical process and is therefore not well suited for casual programmers.  
 Writing compiler backends produces a different problem: there are many target architectures. If you want to create a programming language that will actually be relevant, your backend needs to be able to generate machine instructions for as many of them as possible. The following list of LLVM's supported target architectures should give you an idea of why this might be difficult though:
 
-```
+```terminal
 marcus@~: llc --version
 LLVM (http://llvm.org/):
   LLVM version 8.0.1
@@ -180,7 +180,7 @@ We will also be using the LLVM API via its C-bindings, so you will need to downl
 
 To setup a Swift package, create a new directory for the project, and initialize a new package from within the directory:
 
-```shell
+```terminal
 marcus@~: mkdir Kaleidoscope
 marcus@~: cd Kaleidoscope
 marcus@Kaleidoscope: swift package init
@@ -241,7 +241,7 @@ let package = Package(
 
 We need to reflect the target structure, in the folder structure of our project. So in the package's `Sources` directory, we will need a `Kaleidoscope` and a `KaleidoscopeLib` folder:
 
-```shell
+```terminal
 marcus@Kaleidoscope: cd Sources/
 marcus@Sources: mkdir KaleidoscopeLib
 marcus@Sources: ls
@@ -258,7 +258,7 @@ As mentioned in the section about Kaleidoscope's grammar [above](#kaleidoscope-g
 
 Accordingly we can create a source file for each of these components in the package's `KaleidoscopeLib` directory:
 
-```shell
+```terminal
 marcus@Sources: cd KaleidoscopeLib/
 marcus@KaleidoscopeLib: touch Lexer.swift Parser.swift IRGenerator.swift
 ```

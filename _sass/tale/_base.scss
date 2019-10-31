@@ -5,7 +5,8 @@
 
 html,
 body {
-  color: $default-color;
+  background-color: var(--main-background-color); // COLOR: Basic background.
+  color: var(--default-color); // COLOR: Basic text.
   margin: 0;
   padding: 0;
 }
@@ -30,19 +31,19 @@ h3,
 h4,
 h5,
 h6 {
-  color: $default-shade;
+  color: var(--default-shade); // COLOR: Markdown Header color.
   font-family: $sans-serif;
   line-height: normal;
 }
 
 a {
-  color: $blue;
+  color: var(--blue); // COLOR: Markdown link color.
   text-decoration: none;
 }
 
 blockquote {
-  border-left: .25rem solid $grey-2;
-  color: $grey-1;
+  border-left: .25rem solid var(--grey-2); // COLOR: Markdown quote border.
+  color: var(--grey-1); // COLOR: Markdown quote text.
   margin: .8rem 0;
   padding: .5rem 1rem;
 
