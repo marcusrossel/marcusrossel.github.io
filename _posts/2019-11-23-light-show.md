@@ -214,7 +214,7 @@ I'm routing my computer's audio output to a virtual input-device using a utility
 
 Let's test our detector by just running it on some music that has a clear beat. The following image shows a 10 second segment of [Jon Hopkins' Collider](https://www.google.com/search?&q=Jon+Hopkins+Collider):
 
-![Collider]({{ site.url }}/assets/images/part-1//Collider.png)
+![Collider]({{ site.url }}/assets/images/part-1/Collider.png)
 
  The white line is the loudness of the audio signal over time. The green and orange lines show the state of our detector. The way we've defined our beat detection criteria implies that we detect a beat anytime the white line is above the green line - i.e. our current loudness surpasses the beat detection threshold.
 
