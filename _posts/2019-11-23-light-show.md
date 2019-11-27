@@ -90,7 +90,7 @@ Using these more precise definitions we can start implementing a simple beat det
 Our beat detector will need to be updated regularly with new audio buffers as they are captured, so we'll need a method for that (I'll explain its return type later):
 
 ```java
-class BeatDetector {
+final class BeatDetector {
 
     boolean processBuffer(AudioBuffer buffer) {
         // ...
@@ -101,7 +101,7 @@ class BeatDetector {
 Also, if we want to be able to work with a buffer's neighbors, we will need to capture them in some way. As we will see later, we only actually need the buffers' *loudness* values, not the entire buffers. And we also only need the values for the last `N` seconds (our definition of *"neighbors"*). To achieve this we'll use a time-bounded queue, which is just a queue that deletes elements that were added more than `N` seconds ago:
 
 ```java
-class BeatDetector {
+final class BeatDetector {
 
     private TimedQueue neighborLoudnesses;
 
@@ -114,7 +114,7 @@ The implementation of the `TimedQueue` isn't actually important for the beat det
 If we want to detect *"significant loudness"*, we need to get the average over the neighbors' loudnesses - so we'll need a method for that:
 
 ```java
-class BeatDetector {
+final class BeatDetector {
 
     // ...
 
@@ -123,7 +123,7 @@ class BeatDetector {
         float sum = 0;
 
         for (float value : values) {
-            sum += value
+            sum += value;
         }
 
         return sum / values.size();
@@ -134,7 +134,7 @@ class BeatDetector {
 We also need to define a percentage value for the *significant loudness*. This value will be passed in upon initialization, as will the time-bounded queue's value retention duration:
 
 ```java
-class BeatDetector {
+final class BeatDetector {
 
     // ...
     private float significanceThreshold;
@@ -152,7 +152,7 @@ The only thing missing now is the aforementioned method for turning an audio buf
 
 
 ```java
-class BeatDetector {
+final class BeatDetector {
 
     // ...
 
@@ -184,8 +184,6 @@ Now we can connect our beat-detector to the framework we constructed before:
 ```java
 // ...
 BeatDetector detector;
-
-// ...
 
 void setup() {
     // ...
