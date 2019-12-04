@@ -1,0 +1,19 @@
+<prototype>  ::= <identifier> "(" <params> ")"
+<params>     ::= <identifier> | <identifier> "," <params>
+<definition> ::= "def" <prototype> <expr> ";"
+<extern>     ::= "extern" <prototype> ";"
+<operator>   ::= "+" | "-" | "*" | "/" | "%"
+<expr>       ::= <binary> | <call> | <identifier> | <number> | <ifelse> | "(" <expr> ")"
+<binary>     ::= <expr> <operator> <expr>
+<call>       ::= <identifier> "(" <arguments> ")"
+<ifelse>     ::= "if" <expr> "then" <expr> "else" <expr>
+<arguments>  ::= <expr> | <expr> "," <arguments>
+
+<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+
+<identifier>      ::= <identifier-head> | <identifier> <identifier-body>
+<identifier-body> ::= <identifier-head> | <digit>
+<identifier-head> ::= #Foundation.CharacterSet.letter# | "_"
+<number>          ::= <digits> | <digits> "." <digits>
+<digits>          ::= <digit> | <digit> <digits>
+<digit>           ::= "0" | "1" | ... | "9"

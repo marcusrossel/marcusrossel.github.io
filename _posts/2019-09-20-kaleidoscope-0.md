@@ -159,12 +159,12 @@ The symbol `kaleidoscope` now defines the entirety of the Kaleidoscope language.
 The rules below define the symbols `identifier` and `number`, as they are not actually defined above.
 
 ```
-<identifier> ::= <identifier-head> | <identifier> <identifier-body>
+<identifier>      ::= <identifier-head> | <identifier> <identifier-body>
 <identifier-body> ::= <identifier-head> | <digit>
 <identifier-head> ::= #Foundation.CharacterSet.letter# | "_"
-<number> ::= <digits> | <digits> "." <digits>
-<digits> ::= <digit> | <digit> <digits>
-<digit> ::= "0" | "1" | ... | "9"
+<number>          ::= <digits> | <digits> "." <digits>
+<digits>          ::= <digit> | <digit> <digits>
+<digit>           ::= "0" | "1" | ... | "9"
 ```
 
 I'm assuming Harlan didn't include these rules explicitly, because we usually have a pretty intuitive understanding of what identifiers and numbers are.  
@@ -206,7 +206,7 @@ If you want to use Xcode as your IDE, you can call `swift package generate-xcode
 We will split our package into two targets, `Kaleidoscope` which will become an executable (the compiler), and `KaleidoscopeLib` which will be the library containing almost all of the logic of the compiler. We need to do this, because testing an executable is currently not possible using SPM. So our `Package.swift` manifest file has to look like this:
 
 ```swift
-// swift-tools-version:5.0
+// swift-tools-version:5.1
 
 import PackageDescription
 
@@ -270,3 +270,7 @@ Lastly the IR Generator will use symbols produced by the parser to generate LLVM
 Don't worry if you didn't understand any of that yet - we will go into more detail about each of these components in their respective posts.
 
 Until then, thanks for reading!
+
+---
+
+All of the code in this post can be found [here]({{ site.url }}/assets/kaleidoscope/code/part-0).
