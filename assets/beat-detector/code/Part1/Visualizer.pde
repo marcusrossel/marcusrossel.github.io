@@ -4,18 +4,17 @@ import java.awt.Point;
 final class Visualizer {
 
     private float historyDuration = 5f; // seconds
-  
+
     private float maximumAmplitude = 0f;
     private float maximumFrequency = 20000; // Hz
     private float maximumLoudness = 0f;
-    
+
     // Needed for analyzer history visualization.
     private TimedQueue loudnessHistory = new TimedQueue(historyDuration);
     private TimedQueue averageHistory = new TimedQueue(historyDuration);
     private TimedQueue thresholdHistory = new TimedQueue(historyDuration);
-    
+
     private float triggerPaneY = int(0.06 * height);
-    private boolean leftPaneIsOn = true;
 
     void update(FFT fft, boolean didDetectBeat) {
         background(0);
@@ -43,18 +42,18 @@ final class Visualizer {
             maximumAmplitude = max(maximumAmplitude, amplitude);
 
             int bandY = (int) map(amplitude, 0, maximumAmplitude, height, triggerPaneY);
-            
+
             rect(xOffset, bandY, bandLengthX, height - bandY);
         }
     }
 
     private void showDetector() {
         maximumLoudness = max(maximumLoudness, detector.currentLoudness);
-      
+
         loudnessHistory.add(detector.currentLoudness);
         averageHistory.add(detector.averageLoudness);
         thresholdHistory.add(detector.beatLoudness);
-        
+
         List<List<Point>> historyLines = new ArrayList <List<Point>>();
         for (TimedQueue history : allHistories()) {
             historyLines.add(pointsForHistory(history));
@@ -69,7 +68,7 @@ final class Visualizer {
         strokeWeight(3);
         for (int historyIndex = 0; historyIndex < allHistories().size(); historyIndex++) {
             List<Point> line = pointsForHistory(allHistories().get(historyIndex));
-            
+
           if (line.size() < 2) { break; }
 
             stroke(lineColors[historyIndex]);
@@ -111,13 +110,13 @@ final class Visualizer {
         }
     }
 
-    private void showTriggerPane(boolean didTrigger) {      
-        if (didTrigger) { 
+    private void showTriggerPane(boolean didTrigger) {
+        if (didTrigger) {
             noStroke();
             fill(255, 100, 100, 150);
             rect(0, 0, width, triggerPaneY);
         }
-        
+
         // Draws a seperator to the rest of the visualizations.
         stroke(255);
         strokeWeight(3);

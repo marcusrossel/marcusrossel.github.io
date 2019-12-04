@@ -271,6 +271,10 @@ Don't worry if you didn't understand any of that yet - we will go into more deta
 
 Until then, thanks for reading!
 
+<br/>
+
 ---
 
-All of the code in this post can be found [here]({{ site.url }}/assets/kaleidoscope/code/part-0).
+<br/>
+
+All of the code in this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/kaleidoscope/code/part-0).

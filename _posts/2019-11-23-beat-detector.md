@@ -109,7 +109,7 @@ final class BeatDetector {
 }
 ```
 
-The implementation of the `TimedQueue` isn't actually important for the beat detector, so I'll omit it here. If you're interested though, you can check out [this project's repository]({{ site.url }}/assets/beat-detector/code).  
+The implementation of the `TimedQueue` isn't actually important for the beat detector, so I'll omit it here. If you're interested though, you can check out [this project's repository](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/beat-detector/code).  
 
 If we want to detect *"significant loudness"*, we need to get the average over the neighbors' loudnesses - so we'll need a method for that:
 
@@ -225,3 +225,11 @@ As you can tell, peaks `2`, `3` and `4` are actually split into two peaks that b
 
 So... while we now have a very basic implementation of a beat detector, there are many problems to fix. In the next post we will add some more heuristics to tackle some of them.  
 Until then, thanks for reading!
+
+<br/>
+
+---
+
+<br/>
+
+All of the code in this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/beat-detector/code/Part1).
