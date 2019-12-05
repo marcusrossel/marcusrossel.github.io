@@ -122,7 +122,7 @@ Our lexer needs to have some basic properties. It needs to hold the source code 
 public final class Lexer {
 
     /// The plain text, which will be lexed.
-    public let var text: String
+    public let text: String
 
     /// The position of the next relevant character in `text`.
     public private(set) var position: Int
@@ -294,6 +294,8 @@ public final class Lexer {
 This method works exactly as described above.  
 
 ```swift
+import Foundation
+
 public final class Lexer {
 
     // ...
@@ -327,7 +329,7 @@ extension Optional where Wrapped == Character {
 }
 ```
 
-In order to conveniently work with characters and character sets, we define some extensions on `Character`, as well as optional characters. The `isPartOf` methods simply tell us whether or not a character is part of a character set. If an optional character is `nil` this is of course false.  
+In order to conveniently work with characters and character sets, we define some extensions on `Character`, as well as optional characters. The `isPartOf` methods simply tell us whether or not a character is part of a character set. If an optional character is `nil` this is of course false. We need to import `Foundation` here in order to use `CharacterSet`.  
 The `lexWhitespace` method consumes whitespace and newline characters until something else is encountered. This method is not intended to produce a token, so it always returns `nil` at the end. This method is first in the list of token transformations, so that whitespace does not need to be handled by the other transformations down the line.
 
 ```swift
@@ -469,19 +471,20 @@ No seriously, although I have never actually practised [TDD](https://en.wikipedi
 
 ## Testing With SPM
 
-When we created our project, SPM already created a `Tests` directory for us. It should contain a directory called `KaleidoscopeTests`. We are actually going to test `KaleidoscopeLib` though - and more specifically the `Lexer`. So we'll change some file and folder names to reflect this:
+When we created our project, SPM already created a `Tests` directory for us. By default it contains a directory called `KaleidoscopeTests`, which we changed to `KaleidoscopeLibTests` last post. Since we are specifically going to test the `Lexer`, lets change the test-file's name to reflect this:
 
 ```terminal
-marcus@Tests: mv KaleidoscopeTests/ KaleidoscopeLibTests
 marcus@Tests: ls
 LinuxMain.swift	KaleidoscopeLibTests
 marcus@Tests: cd KaleidoscopeLibTests/
-marcus@KaleidoscopeLibTests: mv KaleidoscopeTests.swift LexerTests.swift
+marcus@KaleidoscopeLibTests: mv KaleidoscopeLibTests.swift LexerTests.swift
 marcus@KaleidoscopeLibTests: ls
 LexerTests.swift	XCTestManifests.swift
 ```
 
 ---
+
+If you're using Xcode, you might need to remove the dead reference to `KaleidoscopeLibTests.swift` and add `LexerTests.swift` to the project manually. This will also require you to tell Xcode again, that `LexerTests.swift` belongs to the `KaleidoscopeLibTests` target, by checking the appropriate checkbox in the file inspector.
 
 `LinuxMain.swift` and `XCTestManifests.swift` are required for testing Swift on Linux. [Ole Begemann](https://twitter.com/olebegemann) has a great [post](https://oleb.net/blog/2017/03/keeping-xctest-in-sync/) about this:
 

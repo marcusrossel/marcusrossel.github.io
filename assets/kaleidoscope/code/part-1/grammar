@@ -1,0 +1,31 @@
+// Lexer:
+
+<left-paren>         ::= "("
+<right-paren>        ::= ")"
+<comma>              ::= ","
+<semicolon>          ::= ";"
+<definition-keyword> ::= "def"
+<external-keyword>   ::= "extern"
+<if-keyword>         ::= "if"
+<then-keyword>       ::= "then"
+<else-keyword>       ::= "else"
+<operator>           ::= "+" | "-" | "*" | "/" | "%"
+<identifier>         ::= <identifier-head> | <identifier> <identifier-body>
+<identifier-body>    ::= <identifier-head> | <digit>
+<identifier-head>    ::= #Foundation.CharacterSet.letter# | "_"
+<number>             ::= <digits> | <digits> "." <digits>
+<digits>             ::= <digit> | <digit> <digits>
+<digit>              ::= "0" | "1" | ... | "9"
+
+// Parser:
+
+<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+<prototype>    ::= <identifier> <left-paren> <params> <right-paren>
+<params>       ::= <identifier> | <identifier> <comma> <params>
+<definition>   ::= <definition-keyword> <prototype> <expr> <semicolon>
+<extern>       ::= <external-keyword> <prototype> <semicolon>
+<expr>         ::= <binary> | <call> | <identifier> | <number> | <ifelse> | <left-paren> <expr> <right-paren>
+<binary>       ::= <expr> <operator> <expr>
+<call>         ::= <identifier> <left-paren> <arguments> <right-paren>
+<ifelse>       ::= <if-keyword> <expr> <then-keyword> <expr> <else-keyword> <expr>
+<arguments>    ::= <expr> | <expr> <comma> <arguments>
