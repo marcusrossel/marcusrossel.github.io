@@ -232,4 +232,4 @@ Until then, thanks for reading!
 
 <br/>
 
-All of the code in this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/beat-detector/code/Part1).
+A full code listing for this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/beat-detector/code/Part1).

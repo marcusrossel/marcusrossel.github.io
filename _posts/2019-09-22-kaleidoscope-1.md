@@ -734,3 +734,11 @@ Test Suite 'All tests' passed at 2019-09-22 12:39:46.290.
 All tests are passing! We can now lex the tokens required for Kaleidoscope. Next post we will use those tokens in our parser, to construct the higher-level symbols of the language.
 
 Until then, thanks for reading!
+
+<br/>
+
+---
+
+<br/>
+
+A full code listing for this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/kaleidoscope/code/part-1).
