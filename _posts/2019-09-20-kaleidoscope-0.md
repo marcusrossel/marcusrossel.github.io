@@ -248,7 +248,37 @@ marcus@Sources: ls
 Kaleidoscope	KaleidoscopeLib
 ```
 
-## File Structure
+#### Satisfying Swift PM
+
+If we tried to create an Xcode project from this package, we'd run into some errors. That's because there are some subtle requirements we are yet to fulfill:
+
+Firstly:
+```
+error: Source files for target KaleidoscopeLibTests should be located under 'Sources/KaleidoscopeLibTests', or a custom sources path can be set with the 'path' property in Package.swift
+```
+
+This error is rather self-explanitory. We need to change all of the references to *"KaleidoscopeTests"* to be *"KaleidoscopeLibTests"* instead:
+
+```terminal
+marcus@Sources: cd ../Tests
+marcus@Kaleidoscope: mv KaleidoscopeTests KaleidoscopeLibTests
+marcus@Kaleidoscope: cd KaleidoscopeLibTests
+marcus@KaleidoscopeLibTests: mv KaleidoscopeTests.swift KaleidoscopeLibTests.swift
+```
+
+Secondly:
+```
+error: executable product 'Kaleidoscope' should have exactly one executable target
+```
+
+This error explains the *problem* pretty well, but not the *solution*. In a Swift package every executable product must contain *exactly one* executable target, so that Swift knows where to begin execution when running the product. But what makes a *target* executable? - The presence of a `main.swift`. Our `Kaleidoscope` target currently only contains `Kaleidoscope.swift`, so again we simply have to rename a file to fix the problem:
+
+```terminal
+marcus@KaleidoscopeLibTests: cd ../../Kaleidoscope
+marcus@Kaleidoscope: mv Kaleidoscope.swift main.swift
+```
+
+## Library Structure
 
 As mentioned in the section about Kaleidoscope's grammar [above](#kaleidoscope-grammar), our compiler frontend will be divided into multiple components. Those are
 
