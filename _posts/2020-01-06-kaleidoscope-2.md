@@ -26,7 +26,7 @@ This intuitive grouping of certain tokens into bigger structures doesn't come to
 In the case of *Kaleidoscope* these rules are already defined. Just as we had grammar rules for lexing, we have grammer rules for parsing:
 
 ```plaintext
-<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+<kaleidoscope> ::= <extern> | <definition> | <expr> | <extern> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
 <prototype>    ::= <identifier> <left-paren> <params> <right-paren>
 <params>       ::= <identifier> | <identifier> <comma> <params>
 <definition>   ::= <definition-keyword> <prototype> <expr> <semicolon>
@@ -63,8 +63,10 @@ public protocol TokenStream {
 
     associatedtype Token
 
-    func nextToken() throws -> Token?
+    mutating func nextToken() throws -> Token?
 }
+
+extension Lexer: TokenStream { }
 ```
 
 A `TokenStream` is very similar to `IteratorProtocol`, but as we want to maintain the difference between throwing and error and returning `nil`, we need to create a more customized protocol.
@@ -100,9 +102,7 @@ public final class Parser<Tokens: TokenStream> where Tokens.Token == Token {
     }
 
     private func consumeToken(_ target: Token) throws {
-        if currentToken != target {
-            throw Error.unexpectedToken(currentToken)
-        }
+        guard currentToken == target else { throw Error.unexpectedToken(currentToken) }
         try consumeToken()
     }
 }
@@ -114,7 +114,7 @@ The second method might not be quite as obvious. When parsing tokens, you someti
 ## Abstract Syntax Tree
 
 Before we are able to write the parsing methods, we need to define which structures we will group the tokens into - i.e. how our AST will look like. This is where our grammar rules come into play.  
-We've defined a program (a `<kaleidoscope>`) to one or more `<prototype>`, `<definition>` and `<expr>` in a specific order:
+We've defined a program (a `<kaleidoscope>`) to be one or more `<extern>`, `<definition>` and `<expr>` in a specific order:
 
 ```swift
 public struct Program {
@@ -125,7 +125,7 @@ public struct Program {
 }
 ```
 
-As we will see later, the only prototypes that won't have definitions are external functions - hence we call the property `externals` here. Prototypes that do have corresponding definitions will be parsed into `Function`s - hence we call their property `functions`.
+As we will see later, the only relevant part of an external function's declaration is the prototype - hence the type of the `externals` property is `[Prototype]`. Prototypes that have a corresponding *definition* as well will be parsed into `Function`s - hence we call their property `functions`.
 
 Since the only values in *Kaleidoscope* are `<number>`s, function prototypes are pretty simple. They only require the function name and the parameter names:
 
@@ -320,19 +320,19 @@ extension Parser {
 }
 ```
 
-No all that remains to be implemented is parsing of `.variable` and `.binary` expressions. As we will see later, variable expressions are basically just occurrences of identifiers that are not function calls - so we won't need a separate method for them, which leaves us with binary expressions:
+Now all that remains to be implemented is parsing of `.variable` and `.binary` expressions. As we will see later, variable expressions are basically just occurrences of identifiers that are not function calls - so we won't need a separate method for them, which leaves us with binary expressions:
 
 ```plaintext
 <binary> ::= <expr> <operator> <expr>
 ```
 
 Although the grammar rule for binary expressions may be simple, they're actually a bit weird when you try to parse them. The problem is that you don't know in advance whether the current expression is part of a binary expression or not. You can only parse an expression, *then* notice that there's an operator following this expression which then tell's us that it's part of a binary expression.  
-This approach is reflected in how we will implement the parsing method for binary expressions. We will always require the expression on the left hand side to be given to us. We will then check whether there's an operator and a right hand side expression following. Only then can we construct a binary expression:
+This approach is reflected in how we implement the parsing method for binary expressions. We will always require the expression on the left hand side to be given to us. Then we check whether there's an operator and a right hand side expression following. Only then can we construct a binary expression:
 
 ```swift
 extension Parser {
 
-    private func parseBinaryExpressionFromOperator(lhs: Expression) throws -> Expression {
+    private func parseBinaryExpression(lhs: Expression) throws -> Expression {
         guard case let .operator(`operator`)? = currentToken else {
             throw Error.unexpectedToken(currentToken)
         }
@@ -342,6 +342,219 @@ extension Parser {
 
         return .binary(lhs: lhs, operator: `operator`, rhs: rhs)
     }
+}
 ```
 
-Now that we've handled all of the different kinds of expression we can finally get to that ominous `parseExpression` method. While all of the methods so far returned one specific kind of expression, this method will try to parse any kind of expression it finds. This of course relies heavily on the parsing methods we've just implemented.
+Now that we've handled all of the different kinds of expression we can finally get to that ominous `parseExpression` method. While all of the methods so far returned one specific kind of expression, this method will try to parse any kind of expression it finds. This of course relies heavily on the parsing methods we've just implemented.  
+The biggest problem with `parseExpression` is that we don't know in advance which kind of expression we're going to parse. So we need to check for each different kind of expression in a sensible manner:
+
+```swift
+extension Parser {
+
+    private func parseExpression() throws -> Expression {
+        var expression: Expression
+
+        switch currentToken {
+        case .symbol(.leftParenthesis):
+            expression = try parseParenthesizedExpression()
+        case .number:
+            expression = try parseNumberExpression()
+        case .keyword(.if):
+            expression = try parseIfExpression()
+        case .identifier(let identifier):
+            expression = (try? parseCallExpression()) ?? .variable(identifier)
+        default:
+            throw Error.unexpectedToken(currentToken)
+        }
+
+        if let binaryExpression = try? parseBinaryExpression(lhs: expression) {
+            expression = binaryExpression
+        }
+
+        return expression
+    }
+}
+```
+
+Let's walk through this method step by step. The structure of the method is heavily influenced by the existence of binary expressions. As mentioned before, we can only start parsing a binary expression once we already have its left hand side - so the first thing we do in this method is create a container for that potential left hand side expression called `expression`.  
+Now we need to parse *some* kind of expression based on the type of our `currentToken` - so we switch over it. The order of the cases is not important. All we do is make the following connections between the `currentToken` and the expected expression:
+
+* `.symbol(.leftParenthesis)` → parenthesized expression
+* `.number` → number literal expression
+* `.keyword(.if)` → if-else expression
+* `.identifier` → call expression or variable expression
+
+As mentioned before, call expressions are basically just variable expressions (that is, an identifier) with an argument list following it. Hence, if `currentToken` is an identifier we try parsing a call expression first, and only if that fails we consider the identifier to be a variable.  
+If `parseExpression` is called - that is, we're supposed to be able to parse some kind of expression - and we find *any other* `currentToken`, we don't know how to parse an expression from it and throw instead.  
+
+Once we've successfully parsed *some* expression, i.e. we've filled `expression`, we check if we're actually dealing with a binary expression by just calling the corresponding parsing method.  
+Whatever results from our parsing attempts is returned in the end.
+
+### Functions
+
+Compared to parsing expressions, parsing the different components associated with functions will be straight forward.  
+Our grammar defines four relevant rules:
+
+```plaintext
+<prototype>  ::= <identifier> <left-paren> <params> <right-paren>
+<params>     ::= <identifier> | <identifier> <comma> <params>
+<definition> ::= <definition-keyword> <prototype> <expr> <semicolon>
+<extern>     ::= <external-keyword> <prototype> <semicolon>
+```
+
+Our AST on the other hand only defines `Function` and `Prototype`.  
+As mentioned before though, external functions basically only consist of their prototype anyway so we don't need a separate type for them as well.
+
+Let's write a parsing method for prototypes first, as externals and functions definitions both require them as a sub-step:
+
+```swift
+extension Parser {
+
+    private func parsePrototype() throws -> Prototype {
+        let identifier = try parseIdentifier()
+        let parameters = try parseTuple(parsingFunction: parseIdentifier)
+
+        return Prototype(name: identifier, parameters: parameters)
+    }
+}
+```
+
+There's not much to explain about this method except perhaps for the parsing of the parameter list. Just as we used `parseTuple` before for parsing the argument list in a call expression, we now use it to parse the prototype's parameter list. Whereas an *argument* list consisted of *expressions* as elements, a *parameter* list only contains the parameter *names* - so we pass `parseIdentifier` as the parsing function.
+
+Using `parsePrototype` we can implement parsing of external function declarations and function definitions:
+
+```swift
+extension Parser {
+
+    private func parseExternalFunction() throws -> Prototype {
+        try consumeToken(.keyword(.external))
+        let prototype = try parsePrototype()
+        try consumeToken(.symbol(.semicolon))
+
+        return prototype
+    }
+
+    private func parseFunction() throws -> Function {
+        try consumeToken(.keyword(.definition))
+        let prototype = try parsePrototype()
+        let expression = try parseExpression()
+        try consumeToken(.symbol(.semicolon))
+
+        return Function(head: prototype, body: expression)
+    }
+}
+```
+
+Remember how we defined if-else expressions to consist of a single expression on each branch, because we don't have the concept of statements? The same holds for functions. Since we don't have statements, function bodies can only be expressions - and since we need *exactly one* return value, there can only be *exactly one* expression. Hence the body of a function can simple be parsed using `parseExpression`.  
+
+### Program
+
+You may not have noticed, but so far all of our parsing methods have been private. So how should a user of the `Parser` create an AST if they can't use any of the parsing methods?  
+The answer is of course a public method - and we'll have it output the entire AST at once. The reason for this lies in the next step of our compiler frontend - the IR generator. Parsing only requires one token after another, so we were able to implement our lexer as a stream of tokens. The IR generator on the other hand sometimes requires global knowledge of the AST before being able to process part of it. Hence it wouldn't make as much sense to implement our parser as a stream of AST-nodes.  
+Here's the method that generates the AST:
+
+```swift
+extension Parser {
+
+    public func parseProgram() throws -> Program {
+        try consumeToken()
+        var program = Program()
+
+        while currentToken != nil {
+            switch currentToken {
+            case .keyword(.external):
+                program.externals.append(try parseExternalFunction())
+            case .keyword(.definition):
+                program.functions.append(try parseFunction())
+            default:
+                program.expressions.append(try parseExpression())
+            }
+        }
+
+        return program
+    }
+}
+```
+
+When creating an instance of `Parser` the `currentToken` is set to `nil`, which normally would indicate the end of the token stream (`tokens`) an hence acts as an end-of-file. Therefore the this method starts by initializing the buffer (`currentToken`) with a call to `consumeToken`. It also creates an empty instance of an AST (`Program`), which will be filled with the AST-nodes that we parse from the token stream.  
+We then take a similar approach as in `parseExpression` when it comes to choosing which AST-node to parse. First of all we keep parsing AST-nodes until the `currentToken` is `nil`, that is we've reached end-of-file. When determining which AST-node to parse we just check the `currentToken`:
+
+* `.keyword(.external)` → external function declaration
+* `.keyword(.definition)` → function definition
+* any other → expression
+
+It should be noted that this method will only produce a sensible result once. Since a `TokenStream` is an iterator it consumes the tokens in the process of iterating over them. So `tokens.next()` will only ever produce `nil` once `parseProgram` has finished. Any following calls to `parseProgram` would therefore return an empty AST.
+
+# Testing the Parser
+
+Just as we created an own test-file for our lexer, we will create one for our parser:
+
+```terminal
+marcus@KaleidoscopeLibTests: touch ParserTests.swift
+marcus@KaleidoscopeLibTests: ls
+LexerTests.swift	ParserTests.swift	XCTestManifests.swift
+```
+
+```swift
+// ParserTests.swift
+
+import XCTest
+@testable import KaleidoscopeLib
+
+final class ParserTests: XCTestCase {
+
+    static var allTests = []
+}
+```
+## Mocking the Lexer
+
+One of the reasons we created the `TokenStream` abstraction over `Lexer` is for the purposes of testability of the parser. Instead of relying on the correctness of the lexer while testing the parser, we can just define a new token stream, solely for the purposes of testing.  
+Optimally we'd just want to pass an explicit array literal of `Token`s to the parser. As `Sequence` or more precisely `IteratorProtocol` does not allow `next` to throw though, we'll need to define a wrapper type:
+
+```swift
+private struct Tokens: TokenStream {
+
+    private var nextIndex = 0
+    private let tokens: [Token]
+
+    init(_ tokens: Token...) {
+        self.tokens = tokens
+    }
+
+    mutating func nextToken() -> Token? {
+        guard nextIndex < tokens.endIndex else { return nil }
+        defer { nextIndex += 1 }
+        return tokens[nextIndex]
+    }
+}
+```
+
+## Writing Test Cases
+
+Using the `Tokens` mock, we can e.g. implement a test case that tests the parser on an empty stream of tokens as follows:
+
+```swift
+final class ParserTests: XCTestCase {
+
+    func testNoTokens() throws {
+        let parser = Parser(tokens: Tokens())
+
+        let program = try parser.parseProgram()
+
+        XCTAssertEqual(program.expressions, [])
+        XCTAssertEqual(program.externals, [])
+        XCTAssertEqual(program.functions, [])
+    }
+}
+```
+
+Note that for this to work we need to mark our AST-nodes as equatable:
+
+```swift
+// Parser.swift
+
+extension Program: Equatable { }
+extension Prototype: Equatable { }
+extension Function: Equatable { }
+extension Expression: Equatable { }
+```
