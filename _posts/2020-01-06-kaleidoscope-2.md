@@ -93,8 +93,8 @@ public final class Parser<Tokens: TokenStream> where Tokens.Token == Token {
 
     // ...
 
-    public enum Error: Swift.Error {
-        case unexpectedToken(Token?)
+    public struct Error: Swift.Error {
+        public let unexpectedToken: Token?
     }
 
     private func consumeToken() throws {
@@ -102,7 +102,7 @@ public final class Parser<Tokens: TokenStream> where Tokens.Token == Token {
     }
 
     private func consumeToken(_ target: Token) throws {
-        guard currentToken == target else { throw Error.unexpectedToken(currentToken) }
+        guard currentToken == target else { throw Error(unexpectedToken: currentToken) }
         try consumeToken()
     }
 }
@@ -118,7 +118,6 @@ We've defined a program (a `<kaleidoscope>`) to be one or more `<extern>`, `<def
 
 ```swift
 public struct Program {
-
     var externals: [Prototype] = []
     var functions: [Function] = []
     var expressions: [Expression] = []
@@ -131,7 +130,6 @@ Since the only values in *Kaleidoscope* are `<number>`s, function prototypes are
 
 ```swift
 public struct Prototype {
-
     let name: String
     let parameters: [String]
 }
@@ -143,7 +141,6 @@ Since functions in *Kaleidoscope* only contain one expression, functions are equ
 
 ```swift
 public struct Function {
-
     let head: Prototype
     let body: Expression
 }
@@ -201,11 +198,15 @@ extension Parser {
             let element = try parseElement()
             elements.append(element)
 
-            guard
-                (try? consumeToken(.symbol(.comma))) != nil ||
-                .symbol(.rightParenthesis) == currentToken
-            else {
-                throw Error.unexpectedToken(currentToken)
+            if currentToken == .symbol(.rightParenthesis) {
+                continue
+            } else if currentToken != .symbol(.comma) {
+                throw Error(unexpectedToken: currentToken)
+            } else {
+                try! consumeToken() // know to be `.symbol(.comma)`
+                guard currentToken != .symbol(.rightParenthesis) else {
+                    throw Error(unexpectedToken: currentToken)
+                }
             }
         }
 
@@ -214,7 +215,7 @@ extension Parser {
 }
 ```
 
-The method starts by parsing a `.symbol(.leftParenthesis)` and declaring the list of elements as empty. Then it tries to add elements to that list by parsing them with the given parsing function until it finds a closing `.symbol(.rightParenthesis)`. Along the way it makes sure that every element is separated by a `.symbol(.comma)`. If it does not find a `.symbol(.comma)` it expects the end of the tuple and checks for a `.symbol(.rightParenthesis)`. It does not consume this token yet though, as this will happen at the start of the next loop iteration anyway.
+The method starts by parsing a `.symbol(.leftParenthesis)` and declaring the list of elements as empty. Then it tries to add elements to that list by parsing them with the given parsing function until it finds a closing `.symbol(.rightParenthesis)`. Along the way it makes sure that every element is separated by a `.symbol(.comma)`. If it does not find a `.symbol(.rightParenthesis)` it expects another element and checks for a `.symbol(.comma)`. If the `currentToken` is not a `.symbol(.comma)` an error is thrown. Lastly the case of `.symbol(.rightParenthesis)` following directly after `.symbol(.comma)` is handled.
 
 The second helper method we'll implement is one for parsing and extracting the `String` from an `.identifier`. There's nothing special about this - it's just common enough of a task that it's worth streamlining:
 
@@ -223,7 +224,7 @@ extension Parser {
 
     private func parseIdentifier() throws -> String {
         guard case let .identifier(identifier)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
 
         try! consumeToken() // known to be `.identifier`
@@ -285,7 +286,7 @@ extension Parser {
 
     private func parseNumberExpression() throws -> Expression {
         guard case let .number(number)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
 
         try! consumeToken() // known to be `.numberLiteral`
@@ -334,7 +335,7 @@ extension Parser {
 
     private func parseBinaryExpression(lhs: Expression) throws -> Expression {
         guard case let .operator(`operator`)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
         try! consumeToken() // known to be `.operator`
 
@@ -364,7 +365,7 @@ extension Parser {
         case .identifier(let identifier):
             expression = (try? parseCallExpression()) ?? .variable(identifier)
         default:
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
 
         if let binaryExpression = try? parseBinaryExpression(lhs: expression) {
@@ -508,42 +509,56 @@ final class ParserTests: XCTestCase {
 ```
 ## Mocking the Lexer
 
-One of the reasons we created the `TokenStream` abstraction over `Lexer` is for the purposes of testability of the parser. Instead of relying on the correctness of the lexer while testing the parser, we can just define a new token stream, solely for the purposes of testing.  
-Optimally we'd just want to pass an explicit array literal of `Token`s to the parser. As `Sequence` or more precisely `IteratorProtocol` does not allow `next` to throw though, we'll need to define a wrapper type:
+One of the reasons we created the `TokenStream` abstraction over `Lexer` is for the purposes of testability of the parser. Instead of relying on the correctness of the lexer while testing the parser, we can just define a new token stream, solely for the purposes of testing:
 
 ```swift
-private struct Tokens: TokenStream {
+private struct LexerMock: TokenStream, ExpressibleByArrayLiteral {
+
+    enum Error: Swift.Error {
+        case mock
+    }
 
     private var nextIndex = 0
-    private let tokens: [Token]
+    private let tokens: [Token?]
 
-    init(_ tokens: Token...) {
+    init(arrayLiteral tokens: Token?...) {
         self.tokens = tokens
     }
 
-    mutating func nextToken() -> Token? {
+    mutating func nextToken() throws -> Token? {
         guard nextIndex < tokens.endIndex else { return nil }
         defer { nextIndex += 1 }
-        return tokens[nextIndex]
+
+        guard let token = tokens[nextIndex] else { throw Error.mock }
+        return token
     }
 }
 ```
 
-## Writing Test Cases
+Note that this type has a built-in quirk that should make testing a bit more comfortable. The quirk lies in `tokens`' type being `[Token?]` instead of just `[Token]`. We'll use this tell the lexer-mock that it should throw by using `nil` as a marker.  
+The behavior becomes evident by looking at the implementation of `nextToken`:
 
-Using the `Tokens` mock, we can e.g. implement a test case that tests the parser on an empty stream of tokens as follows:
+* *line 1:* if we've alread consumed everything in `tokens`, return `nil`
+* *line 4:* if the current token is `nil`, throw a error
+* *line 5:* if the current token is not `nil`, return it
+
+## Adding Helpers
+
+Since the only public method on `Parser` is `parseProgram`, we'll only ever be able to analyze the output of our parser by checking the properties of a `Program` AST-node. Since we're often only interested in part of the output (say the `expressions` property) and want all of the other properties to to be empty (that is `[]`), we'll define some helpers on `Program`:
 
 ```swift
-final class ParserTests: XCTestCase {
+private extension Program {
 
-    func testNoTokens() throws {
-        let parser = Parser(tokens: Tokens())
+    func onlyContains(externals: [Prototype]) -> Bool {
+        functions.isEmpty && expressions.isEmpty && (self.externals == externals)
+    }
 
-        let program = try parser.parseProgram()
+    func onlyContains(functions: [Function]) -> Bool {
+        externals.isEmpty && expressions.isEmpty && (self.functions == functions)
+    }
 
-        XCTAssertEqual(program.expressions, [])
-        XCTAssertEqual(program.externals, [])
-        XCTAssertEqual(program.functions, [])
+    func onlyContains(expressions: [Expression]) -> Bool {
+        externals.isEmpty && functions.isEmpty && (self.expressions == expressions)
     }
 }
 ```
@@ -557,4 +572,58 @@ extension Program: Equatable { }
 extension Prototype: Equatable { }
 extension Function: Equatable { }
 extension Expression: Equatable { }
+```
+
+## Writing Test Cases
+
+Using the `LexerMock` we can e.g. implement a test case that tests the parser on an empty stream of tokens as follows:
+
+```swift
+final class ParserTests: XCTestCase {
+
+    // ...
+
+    func testNoTokens() throws {
+        let tokens: LexerMock = []
+        let parser = Parser(tokens: tokens)
+        let program = try parser.parseProgram()
+
+        XCTAssert(program.externals.isEmpty)
+        XCTAssert(program.functions.isEmpty)
+        XCTAssert(program.expressions.isEmpty)
+    }
+}
+```
+
+If we want to test how the parser handles lexer-errors we can use the aforementioned quirk in our lexer-mock:
+
+```swift
+final class ParserTests: XCTestCase {
+
+    // ...
+
+    func testLexerError() {
+        let tokens: LexerMock = [nil]
+        let parser = Parser(tokens: tokens)
+
+        do {
+            _ = try parser.parseProgram()
+            XCTFail("Expected an error to be thrown.")
+        } catch {
+            XCTAssertTrue(error is LexerMock.Error)
+        }
+    }
+}
+```
+
+As Swift's error handling model is currently type-erased, i.e. all that is known about an error is that it conforms to `Error`, there aren't really any error-checking APIs in XCTest. Hence we have to perform the check a bit more manually.
+
+Below is a list of more test cases, so that you don't have to write them yourself. You can of course adapt them to suit the exact implementation of your own parser:  
+
+```swift
+final class ParserTests: XCTestCase {
+
+    // ...
+
+}
 ```

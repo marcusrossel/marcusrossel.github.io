@@ -1,18 +1,9 @@
-// MARK: - Token Stream
-
-public protocol TokenStream {
- 
-    associatedtype Token
- 
-    mutating func nextToken() throws -> Token?
-}
-
 // MARK: - Parser
 
 public final class Parser<Tokens: TokenStream> where Tokens.Token == Token {
  
-    public enum Error: Swift.Error {
-        case unexpectedToken(Token?)
+    public struct Error: Swift.Error {
+        public let unexpectedToken: Token?
     }
     
     private var tokens: Tokens
@@ -27,7 +18,7 @@ public final class Parser<Tokens: TokenStream> where Tokens.Token == Token {
     }
     
     private func consumeToken(_ target: Token) throws {
-        guard currentToken == target else { throw Error.unexpectedToken(currentToken) }
+        guard currentToken == target else { throw Error(unexpectedToken: currentToken) }
         try consumeToken()
     }
     
@@ -62,11 +53,15 @@ extension Parser {
             let element = try parseElement()
             elements.append(element)
  
-            guard
-                (try? consumeToken(.symbol(.comma))) != nil ||
-                .symbol(.rightParenthesis) == currentToken
-            else {
-                throw Error.unexpectedToken(currentToken)
+            if currentToken == .symbol(.rightParenthesis) {
+                continue
+            } else if currentToken != .symbol(.comma) {
+                throw Error(unexpectedToken: currentToken)
+            } else {
+                try! consumeToken() // know to be `.symbol(.comma)`
+                guard currentToken != .symbol(.rightParenthesis) else {
+                    throw Error(unexpectedToken: currentToken)
+                }
             }
         }
  
@@ -75,7 +70,7 @@ extension Parser {
     
     private func parseIdentifier() throws -> String {
         guard case let .identifier(identifier)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
         
         try! consumeToken() // known to be `.identifier`
@@ -100,7 +95,7 @@ extension Parser {
         case .identifier(let identifier):
             expression = (try? parseCallExpression()) ?? .variable(identifier)
         default:
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
         
         if let binaryExpression = try? parseBinaryExpression(lhs: expression) {
@@ -127,7 +122,7 @@ extension Parser {
     
     private func parseNumberExpression() throws -> Expression {
         guard case let .number(number)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
         
         try! consumeToken() // known to be `.numberLiteral`
@@ -147,7 +142,7 @@ extension Parser {
     
     private func parseBinaryExpression(lhs: Expression) throws -> Expression {
         guard case let .operator(`operator`)? = currentToken else {
-            throw Error.unexpectedToken(currentToken)
+            throw Error(unexpectedToken: currentToken)
         }
         try! consumeToken() // known to be `.operator`
         
@@ -189,20 +184,17 @@ extension Parser {
 // MARK: - AST
 
 public struct Program {
- 
     var externals: [Prototype] = []
     var functions: [Function] = []
     var expressions: [Expression] = []
 }
 
 public struct Prototype {
- 
     let name: String
     let parameters: [String]
 }
 
 public struct Function {
- 
     let head: Prototype
     let body: Expression
 }
@@ -213,6 +205,15 @@ public indirect enum Expression {
     case binary(lhs: Expression, operator: Operator, rhs: Expression)
     case call(String, arguments: [Expression])
     case `if`(condition: Expression, then: Expression, else: Expression)
+}
+
+// MARK: - Token Stream
+
+public protocol TokenStream {
+ 
+    associatedtype Token
+ 
+    mutating func nextToken() throws -> Token?
 }
 
 // MARK: - Conformances
