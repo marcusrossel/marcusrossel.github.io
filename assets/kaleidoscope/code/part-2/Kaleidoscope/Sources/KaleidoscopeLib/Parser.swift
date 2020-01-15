@@ -52,17 +52,15 @@ extension Parser {
         while (try? consumeToken(.symbol(.rightParenthesis))) == nil {
             let element = try parseElement()
             elements.append(element)
- 
+            
             if currentToken == .symbol(.rightParenthesis) {
                 continue
-            } else if currentToken != .symbol(.comma) {
-                throw Error(unexpectedToken: currentToken)
-            } else {
+            } else if currentToken == .symbol(.comma) {
                 try! consumeToken() // know to be `.symbol(.comma)`
-                guard currentToken != .symbol(.rightParenthesis) else {
-                    throw Error(unexpectedToken: currentToken)
-                }
+                if currentToken != .symbol(.rightParenthesis) { continue }
             }
+            
+            throw Error(unexpectedToken: currentToken)
         }
  
         return elements
@@ -98,8 +96,8 @@ extension Parser {
             throw Error(unexpectedToken: currentToken)
         }
         
-        if let binaryExpression = try? parseBinaryExpression(lhs: expression) {
-            expression = binaryExpression
+        if case .operator = currentToken {
+            expression = try parseBinaryExpression(lhs: expression)
         }
         
         return expression

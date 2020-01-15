@@ -200,14 +200,12 @@ extension Parser {
 
             if currentToken == .symbol(.rightParenthesis) {
                 continue
-            } else if currentToken != .symbol(.comma) {
-                throw Error(unexpectedToken: currentToken)
-            } else {
+            } else if currentToken == .symbol(.comma) {
                 try! consumeToken() // know to be `.symbol(.comma)`
-                guard currentToken != .symbol(.rightParenthesis) else {
-                    throw Error(unexpectedToken: currentToken)
-                }
+                if currentToken != .symbol(.rightParenthesis) { continue }
             }
+
+            throw Error(unexpectedToken: currentToken)
         }
 
         return elements
@@ -215,7 +213,7 @@ extension Parser {
 }
 ```
 
-The method starts by parsing a `.symbol(.leftParenthesis)` and declaring the list of elements as empty. Then it tries to add elements to that list by parsing them with the given parsing function until it finds a closing `.symbol(.rightParenthesis)`. Along the way it makes sure that every element is separated by a `.symbol(.comma)`. If it does not find a `.symbol(.rightParenthesis)` it expects another element and checks for a `.symbol(.comma)`. If the `currentToken` is not a `.symbol(.comma)` an error is thrown. Lastly the case of `.symbol(.rightParenthesis)` following directly after `.symbol(.comma)` is handled.
+The method starts by parsing a `.symbol(.leftParenthesis)` and declaring the list of elements as empty. Then it tries to add elements to that list by parsing them with the given parsing function until it finds a closing `.symbol(.rightParenthesis)`. Along the way it makes sure that every element is separated by a `.symbol(.comma)`. If it finds a `.symbol(.rightParenthesis)` that's ok and it `continue`s. If the `currentToken` is a `.symbol(.comma)` that's ok as long as it is not followed by a `.symbol(.rightParenthesis)`. Any other case leads to an error being thrown.
 
 The second helper method we'll implement is one for parsing and extracting the `String` from an `.identifier`. There's nothing special about this - it's just common enough of a task that it's worth streamlining:
 
@@ -368,8 +366,8 @@ extension Parser {
             throw Error(unexpectedToken: currentToken)
         }
 
-        if let binaryExpression = try? parseBinaryExpression(lhs: expression) {
-            expression = binaryExpression
+        if case .operator = currentToken {
+            expression = try parseBinaryExpression(lhs: expression)
         }
 
         return expression
@@ -388,7 +386,7 @@ Now we need to parse *some* kind of expression based on the type of our `current
 As mentioned before, call expressions are basically just variable expressions (that is, an identifier) with an argument list following it. Hence, if `currentToken` is an identifier we try parsing a call expression first, and only if that fails we consider the identifier to be a variable.  
 If `parseExpression` is called - that is, we're supposed to be able to parse some kind of expression - and we find *any other* `currentToken`, we don't know how to parse an expression from it and throw instead.  
 
-Once we've successfully parsed *some* expression, i.e. we've filled `expression`, we check if we're actually dealing with a binary expression by just calling the corresponding parsing method.  
+Once we've successfully parsed *some* expression, i.e. we've filled `expression` with a value, we check if we're actually dealing with a binary expression by checking whether the `currentToken` is an `.operator`. If so we call the corresponding parsing method.  
 Whatever results from our parsing attempts is returned in the end.
 
 ### Functions
@@ -618,12 +616,7 @@ final class ParserTests: XCTestCase {
 
 As Swift's error handling model is currently type-erased, i.e. all that is known about an error is that it conforms to `Error`, there aren't really any error-checking APIs in XCTest. Hence we have to perform the check a bit more manually.
 
-Below is a list of more test cases, so that you don't have to write them yourself. You can of course adapt them to suit the exact implementation of your own parser:  
+If you want the entire list of test cases, check out the link to the full code listing at the bottom of this post.
 
-```swift
-final class ParserTests: XCTestCase {
 
-    // ...
-
-}
-```
+## Evaluating the Results

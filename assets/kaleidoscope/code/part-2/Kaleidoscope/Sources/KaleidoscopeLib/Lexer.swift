@@ -187,7 +187,7 @@ extension Lexer {
 // MARK: - Token
 
 public enum Token {
-
+    
     case keyword(Keyword)
     case identifier(String)
     case number(Double)
