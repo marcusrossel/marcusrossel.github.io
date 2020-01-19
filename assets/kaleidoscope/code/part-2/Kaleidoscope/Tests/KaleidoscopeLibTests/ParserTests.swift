@@ -495,7 +495,7 @@ final class ParserTests: XCTestCase {
         let tokens: LexerMock = [
             .keyword(.definition), .identifier("number_10"),
             .symbol(.leftParenthesis),
-            .identifier("_1"), .symbol(.comma), .identifier("_2"),
+            .identifier("_1"), .symbol(.comma), .identifier("_1"),
             .symbol(.rightParenthesis),
             .number(10),
             .symbol(.semicolon)
@@ -504,7 +504,7 @@ final class ParserTests: XCTestCase {
         let program = try parser.parseProgram()
         
         let expected: [Function] = [
-            .init(head: .init(name: "number_10", parameters: ["_1", "_2"]), body: .number(10))
+            .init(head: .init(name: "number_10", parameters: ["_1", "_1"]), body: .number(10))
         ]
         XCTAssert(program.onlyContains(functions: expected))
     }

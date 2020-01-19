@@ -616,7 +616,72 @@ final class ParserTests: XCTestCase {
 
 As Swift's error handling model is currently type-erased, i.e. all that is known about an error is that it conforms to `Error`, there aren't really any error-checking APIs in XCTest. Hence we have to perform the check a bit more manually.
 
-If you want the entire list of test cases, check out the link to the full code listing at the bottom of this post.
+If you want the entire list of test cases, check out the link to the full code listing at the bottom of this post. As with the lexer tests, these test cases were written so that you can make sure that your specific implementation of the parser is correct. I found a couple of mistakes in the parser myself while writing these tests.
 
 
 ## Evaluating the Results
+
+Luckily, all of the test cases are successful for the parser presented in this post. If you take a closer look at some of the test cases, they might seem like they shouldn't succeed though.  
+In `testMultipleFunctionDefinitions` we succeed even though two functions have the same name `first`:
+
+```swift
+func testMultipleFunctionDefinitions() throws {
+    let tokens: LexerMock = [
+        .keyword(.definition), .identifier("first"),
+        .symbol(.leftParenthesis), .symbol(.rightParenthesis),
+        .number(10),
+        .symbol(.semicolon),
+
+        .keyword(.definition), .identifier("first"),
+        .symbol(.leftParenthesis),
+        .identifier("_1"), .symbol(.comma), .identifier("_2"),
+        .symbol(.rightParenthesis),
+        .number(100),
+        .symbol(.semicolon),
+
+        .keyword(.definition), .identifier("other"),
+        .symbol(.leftParenthesis),
+        .identifier("only"),
+        .symbol(.rightParenthesis),
+        .number(1),
+        .symbol(.semicolon)
+    ]
+
+    // ...
+}
+```
+
+And in `testFunctionDefinitionWithParameters` we succeed even though two parameter names are both `_1`:
+
+```swift
+func testFunctionDefinitionWithParameters() throws {
+    let tokens: LexerMock = [
+        .keyword(.definition), .identifier("number_10"),
+        .symbol(.leftParenthesis),
+        .identifier("_1"), .symbol(.comma), .identifier("_1"),
+        .symbol(.rightParenthesis),
+        .number(10),
+        .symbol(.semicolon)
+    ]
+
+    // ...
+}
+```
+
+If you think back to the post about lexers we had a similar situation:
+
+> As you can see, some cases seem like they should not be valid, but don't fail. For example we'll never want to accept a program containing `+-*/%`, but our lexer is ok with it. This is ok, because it's not the job of the lexer to understand which combinations of tokens are allowed. This is the job of the parser [...]
+
+The issues presented above are of the same flavor. We know that we don't want to accept them, but they're not of our parser's concern.  
+In fact we haven't even captured a specification for them in our grammar! That's because these issue require what is called a *context sensitive* grammar to describe them properly. BNF-notation only allows us to specify *context free* languages, and hence our parser also recognizes a context free language.  
+Implementing the context sensitive aspect of *Kaleidoscope* will be part of the next post. More specifically we will need to introduce semantic analysis as part of the IR-generator. 
+
+Until then, thanks for reading!
+
+<br/>
+
+---
+
+<br/>
+
+A full code listing for this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/kaleidoscope/code/part-2).
