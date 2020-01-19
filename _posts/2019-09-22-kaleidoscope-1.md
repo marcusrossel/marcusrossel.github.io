@@ -52,7 +52,7 @@ As we've just learned the lexer is responsible for creating tokens from raw char
 
 // Parser:
 
-<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+<kaleidoscope> ::= <extern> | <definition> | <expr> | <extern> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
 <prototype>    ::= <identifier> "(" <params> ")"
 <params>       ::= <identifier> | <identifier> "," <params>
 <definition>   ::= "def" <prototype> <expr> ";"
@@ -89,7 +89,7 @@ Our current grammar does not quite fulfill this requirement yet, so we will modi
 
 // Parser:
 
-<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+<kaleidoscope> ::= <extern> | <definition> | <expr> | <extern> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
 <prototype>    ::= <identifier> <left-paren> <params> <right-paren>
 <params>       ::= <identifier> | <identifier> <comma> <params>
 <definition>   ::= <definition-keyword> <prototype> <expr> <semicolon>

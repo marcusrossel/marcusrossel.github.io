@@ -9,7 +9,7 @@
 <ifelse>     ::= "if" <expr> "then" <expr> "else" <expr>
 <arguments>  ::= <expr> | <expr> "," <arguments>
 
-<kaleidoscope> ::= <prototype> | <definition> | <expr> | <prototype> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
+<kaleidoscope> ::= <extern> | <definition> | <expr> | <extern> <kaleidoscope> | <definition> <kaleidoscope> | <expr> <kaleidoscope>
 
 <identifier>      ::= <identifier-head> | <identifier> <identifier-body>
 <identifier-body> ::= <identifier-head> | <digit>
