@@ -1,5 +1,5 @@
 ---
-title: "Transparent Value Type Composition in Swift"
+title: "Value Type Hierarchies via Composition in Swift"
 ---
 
 When creating types that have similar or overlapping functionality, it can be hard to come up with a scheme that avoids duplication without creating leaky abstractions. The tools we usually have for tackling problems in this domain are type *inheritance* and type *composition*.  
@@ -8,16 +8,16 @@ When creating types that have similar or overlapping functionality, it can be ha
 
 Inheritance allows types to inherit all of the properties of a specific super-type. Consider the following example of types `A` and `B`:
 
-![{{ site.url }}/assets/swift-composition/images/1.png]
+![{{ site.url }}/assets/swift-composition/images/a-b.png]
 
 If we wanted `B` to also have all of the capabilities of `A`, we could simply have it inherit from `A`:
 
-![{{ site.url }}/assets/swift-composition/images/2.png]
+![{{ site.url }}/assets/swift-composition/images/b-inherits-a.png]
 
 At first glance this is a pretty elegant solution for sharing functionality without duplication. As you probably know though, this mechanism has its limits.  
 Say we had another type `C` and wanted `B` to inherit its properties as well:
 
-![{{ site.url }}/assets/swift-composition/images/3.png]
+![{{ site.url }}/assets/swift-composition/images/b-inherits-a-c.png]
 
 The illustration seems to work out, but once you try to implement this setup, you will probably find that the language of your choice only supports single inheritance - Swift being one of those languages.  
 Another constraining factor is that inheritance can't be implemented on value types, as the compiler wouldn't know how much memory to allocate for a given type. This is also reflected in Swift where only classes, i.e. reference types, support inheritance.
@@ -25,11 +25,11 @@ Another constraining factor is that inheritance can't be implemented on value ty
 A possible solutions to these problems is type composition. Composition allows types to be built up from other self-contained (member-)types.  
 Consider the example of types `A` and `B` from above. If we wanted `B` to have all of the capabilities of `A`, we could add an instance of `A` as a member:
 
-![{{ site.url }}/assets/swift-composition/images/4.png]
+![{{ site.url }}/assets/swift-composition/images/b-composes-a.png]
 
 And even when we add the type `C` we can just add another member `c`:
 
-![{{ site.url }}/assets/swift-composition/images/5.png]
+![{{ site.url }}/assets/swift-composition/images/b-composes-a-c.png]
 
 So now we can compose types from multiple (member-)types and even use value types!  
 One of the problems with this approach though is that properties of the member-types are nested behind another property. That is, if we want to access the property `a1` on a value of type `B`, we actually have access `a.a1`. This might seem trivial, but it can actually be problematic for proper abstraction.  
@@ -168,14 +168,14 @@ struct B {
 ```
 
 By passing a key path (`KeyPath<X, Y>`) to the subscript, we first of all know exactly which properties can even be accessed (all of the properties declared on type `X`). Hence we don't have to handle attempts of accessing invalid properties by returning an optional or throwing.  
-Second of all, we now know what the type of property we're accessing is going to be (type `Y`). Hence we don't have to return `Any` from the subscript.  
+Second of all, we now know what the type of the property we're accessing is going to be (type `Y`). Hence we don't have to return `Any` from the subscript.  
 And thirdly, by making the second type parameter of the key path generic (as is `T` in the example above), we can cover *all* properties of a specific type without needing to know them. So we don't need to list them one by one anymore, and can instead just propagate the key path to the nested type instance (`a[keyPath: keyPath]`).
 
 Using key path member lookup solves all of the problems of dynamic member lookup by just reintroducing types into the equation. An implementation of `B` as shown above would now let us write statements like:
 
 ```swift
 let b = B()
-let firstInt = b.c2.first { $0 is Int }
+let finite = b.c1.isFinite
 print("Hello" + b.a2)
 ```
 
@@ -197,7 +197,138 @@ struct D {
 
 # Polymorphism
 
-What's become clear (as e.g. seen by the "" around "inherit"), the implementation above does not preserve the relationships between types like, say, "real" class-inheritance does.
+While composition via key path member lookup is great for creating types with overlapping functionality without duplication, it does not preserve the relationships between types. For example, above we say that `D` **"**inherits**"** from `B`, because it the we have not actually declared this relationship explicitly.  
+So how do we model relationships between value types? - with protocols. The reason I mention this is that there's (currently) a quirk that comes with protocol conformances on types using keypath member lookup. This quirk is best explained by building on the example types from above.
+
+The type relationship that we established above is that `D` inherits from `B` which inherits from `A` and `C`. To model the later relationship, let's declare some protocols:
+
+```swift
+protocol ChildOfA {
+    var a1: Int { get }
+    var a2: String { get }
+}
+
+protocol ChildOfC {
+    var c1: Double { get }
+    var c2: Any { get }
+}
+```
+
+Since `B` fulfills all of these requirements, let's declare it's conformance:
+
+```swift
+extension B: ChildOfA, ChildOfC { } // ⚡️
+```
+
+This is where we reach a limitation with Swift. The compiler complains that we haven't implemented the necessary requirements, even though we have - just a little bit indirectly.  
+Apparently Kotlin has a feature called *interface delegation* that makes this specific mechanic possible, so this is not an unsolvable problem. There has also been a [discussion](https://forums.swift.org/t/introduce-dynamic-member-fulfillment-of-protocols/13205) on the Swift Forums about this a while ago. [Chris Lattner](https://forums.swift.org/u/Chris_Lattner3) left a comment with his thoughts:
+
+> This was suggested and I specifically considered this and pushed back on this during the review process. The entire point of the dynamic member lookup feature is to allow unbound syntactic extension of a member lookup in the case when the author of a type cannot enumerate all of the members that a user might want to use statically.  
+In the case of protocol conformance, a protocol does have a specific static list of members that need to be satisfied.
+
+This comment was posted way before the introduction of key path member lookup though, so maybe there's a chance the Swift compiler will one day be able to handle these indirect requirement-fulfilments.
+
+## Workarounds
+
+So as long as Swift can't handle this kind of protocol conformance, how do we get around it?  
+We just declare what we're *actually* implementing, i.e. the key path member subscript:
+
+```swift
+protocol ChildOfA {
+    subscript<T>(dynamicMember keyPath: KeyPath<A, T>) -> T { get }
+}
+
+protocol ChildOfC {
+    subscript<T>(dynamicMember keyPath: KeyPath<C, T>) -> T { get }
+}
+```
+
+This way we know that any conforming type can provide all of the properties of `A` and `C` - but using the key path member mechanism instead of regular properties.  
+If we now declare the conformance on `B` again:
+
+```swift
+extension B: ChildOfA, ChildOfC { } // ✅
+```
+
+... we can actually use the protocol for polymorphism:
+
+```swift
+let someA: ChildOfA = B()
+let someC: ChildOfC = B()
+```
+
+And if we try to access the key path members on `someA` and `someC`:
+
+```swift
+let x = someA.a2 // ⚡️
+let y = someC.c1 // ⚡️
+```
+
+... we get a compiler error. We *can* access the members via the explicit key path member subscript, but not with the property syntax. For that, we also have to mark the *protocol* with dynamic member lookup:
+
+```swift
+@dynamicMemberLookup
+protocol ChildOfA {
+    subscript<T>(dynamicMember keyPath: KeyPath<A, T>) -> T { get }
+}
+
+@dynamicMemberLookup
+protocol ChildOfC {
+    subscript<T>(dynamicMember keyPath: KeyPath<C, T>) -> T { get }
+}
+```
+
+And since all good things come in threes, we've got one more problem to address. Say we were to write a function that takes an `A` (or child thereof) and prints its `a2` property. Since we've just implemented polymorphism for `A`'s, we'd probably write the following:
+
+```swift
+func printA2(of a: ChildOfA) {
+    print(a.a2)
+}
+```
+
+This compiles just fine and we could e.g. call it as follows:
+
+```swift
+let b = B()
+printA2(of: b)
+```
+
+Ironically what doesn't work is this:
+
+```swift
+let a = A()
+printA2(of: A) // ⚡️
+```
+
+The way we've declared the protocols implies that `A` and `C` don't implicitly conform to them. We need to expose their properties via the key path member lookup mechanism as well:
+
+```swift
+@dynamicMemberLookup
+struct A {
+    var a1: Int = 0
+    var a2: String = ""
+
+    subscript<T>(dynamicMember keyPath: KeyPath<A, T>) -> T {
+        self[keyPath: keyPath]
+    }
+}
+
+@dynamicMemberLookup
+struct C {
+    var c1: Double = 0.0
+    var c2: Any = [Any]()
+
+    subscript<T>(dynamicMember keyPath: KeyPath<C, T>) -> T {
+        self[keyPath: keyPath]
+    }
+}
+```
+
+But of course Swift has one last hurdle for us. As of the time of this post, the declaration above causes the compiler to crash with `Segmentation fault: 11` or `Illegal instruction: 4`. So should you face similar issues, perhaps add a dummy type that simply clones `A`/`C` but through the lens of key path member lookup.
+
+Alas, I hope these workarounds have not made this mechanism too unattractive for you to try out - because my personal experience with it has been rather pleasant.  
+Perhaps by now Swift even supports delegated protocol conformance and I can happly delete this last section 🙃.  
+But until then, thanks for reading!
 
 <br/>
 
@@ -205,4 +336,4 @@ What's become clear (as e.g. seen by the "" around "inherit"), the implementatio
 
 <br/>
 
-A full code listing for this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/beat-detector/code/Part1).
+A code listing of a compiling state for this post can be found [here](https://github.com/marcusrossel/marcusrossel.github.io/tree/master/assets/swift-composition/code/composition.swift).
