@@ -8,16 +8,16 @@ When creating types that have similar or overlapping functionality, it can be ha
 
 Inheritance allows types to inherit all of the properties of a specific super-type. Consider the following example of types `A` and `B`:
 
-![{{ site.url }}/assets/swift-composition/images/a-b.png]
+![Types A and B]({{ site.url }}/assets/swift-composition/images/a-b.png)
 
 If we wanted `B` to also have all of the capabilities of `A`, we could simply have it inherit from `A`:
 
-![{{ site.url }}/assets/swift-composition/images/b-inherits-a.png]
+![B inherits from A]({{ site.url }}/assets/swift-composition/images/b-inherits-a.png)
 
 At first glance this is a pretty elegant solution for sharing functionality without duplication. As you probably know though, this mechanism has its limits.  
 Say we had another type `C` and wanted `B` to inherit its properties as well:
 
-![{{ site.url }}/assets/swift-composition/images/b-inherits-a-c.png]
+![B inherits from A and C]({{ site.url }}/assets/swift-composition/images/b-inherits-a-c.png)
 
 The illustration seems to work out, but once you try to implement this setup, you will probably find that the language of your choice only supports single inheritance - Swift being one of those languages.  
 Another constraining factor is that inheritance can't be implemented on value types, as the compiler wouldn't know how much memory to allocate for a given type. This is also reflected in Swift where only classes, i.e. reference types, support inheritance.
@@ -25,11 +25,11 @@ Another constraining factor is that inheritance can't be implemented on value ty
 A possible solutions to these problems is type composition. Composition allows types to be built up from other self-contained (member-)types.  
 Consider the example of types `A` and `B` from above. If we wanted `B` to have all of the capabilities of `A`, we could add an instance of `A` as a member:
 
-![{{ site.url }}/assets/swift-composition/images/b-composes-a.png]
+![B composes A]({{ site.url }}/assets/swift-composition/images/b-composes-a.png)
 
 And even when we add the type `C` we can just add another member `c`:
 
-![{{ site.url }}/assets/swift-composition/images/b-composes-a-c.png]
+![B composes A and C]({{ site.url }}/assets/swift-composition/images/b-composes-a-c.png)
 
 So now we can compose types from multiple (member-)types and even use value types!  
 One of the problems with this approach though is that properties of the member-types are nested behind another property. That is, if we want to access the property `a1` on a value of type `B`, we actually have access `a.a1`. This might seem trivial, but it can actually be problematic for proper abstraction.  
