@@ -1,10 +1,10 @@
-// swift-tools-version:5.1
+// swift-tools-version:5.2
 
 import PackageDescription
 
 let package = Package(
     name: "Kaleidoscope",
-
+    
     products: [
         .executable(
             name: "Kaleidoscope",
@@ -15,9 +15,13 @@ let package = Package(
     dependencies: [ ],
 
     targets: [
+        .systemLibrary(
+            name: "CLLVM",
+            providers: [.brew(["llvm"])]
+        ),
         .target(
             name: "KaleidoscopeLib",
-            dependencies: []
+            dependencies: ["CLLVM"]
         ),
         .target(
             name: "Kaleidoscope",

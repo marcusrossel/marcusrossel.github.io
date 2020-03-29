@@ -1,0 +1,4 @@
+module CLLVM [system] {
+  umbrella header "umbrella.h"
+  module * { export * }
+}
