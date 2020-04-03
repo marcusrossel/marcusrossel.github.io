@@ -4,13 +4,16 @@ title: "Implementing LLVM's Kaleidoscope in Swift - Part 3"
 
 Last post we implemented a parser that assembles the output of the lexer into a more meaningful abstract syntax tree, i.e. into expressions, function definitions and external declarations. In this post we're going to generate LLVM-IR from those AST-nodes.
 
+> *Important note:*  
+Although I have been able to work through implementing an IR-generator for *Kaleidoscope*, I am by no means a source of knowledge on this topic. Hence this post will rely *heavily* on external sources, as manifest in the quote-fest below.
+
 ---
 
-Considering that this series of posts is called *"Implementing **LLVM**'s Kaleidoscope in Swift"* you might have noticed a distinct lack of *LLVM*-ness so far. That's because so far we've been busy turning *Kaleidoscope*-code into some representation the *we* understand - i.e. our AST. The job of *LLVM* is to turn a code-representation that *it* understands into an executable program. In consequence, we have to convert our AST-representation into *LLVM*'s *"intermediate representation" (IR)*. For that purpose we'll create an *"IR-Generator"*.
+*Considering that this series of posts is called *"Implementing **LLVM**'s Kaleidoscope in Swift"* you might have noticed a distinct lack of *LLVM*-ness so far. That's because so far we've been busy turning *Kaleidoscope*-code into some representation the *we* understand - i.e. our AST. The job of *LLVM* is to turn a code-representation that *it* understands into an executable program. In consequence, we have to convert our AST-representation into *LLVM*'s *"intermediate representation" (IR)*. For that purpose we'll create an *"IR-Generator"*.
 
 # LLVM IR
 
-*LLVM*'s intermediate representation in itself is a [vast topic](https://llvm.org/docs/LangRef.html), but for the purpose of *Kaleidoscope* we only need to understand a couple of its concepts. As I am not sufficiently knowledgable on this topic to explain it myself, I have selected relevant sections from the documentation for explanation:
+*LLVM*'s intermediate representation in itself is a [vast topic](https://llvm.org/docs/LangRef.html), but for the purpose of *Kaleidoscope* we only need to understand a couple of its concepts. I have selected relevant sections from the documentation for explanation:
 
 > The LLVM code representation is designed to be used in three different forms: as an in-memory compiler IR, as an on-disk bitcode representation (suitable for fast loading by a Just-In-Time compiler), and as a human readable **assembly language representation**. [...] It aims to be a “universal IR” of sorts, by being at a low enough level that high-level ideas may be cleanly mapped to it [...]. [↗](https://llvm.org/docs/LangRef.html#introduction)
 
@@ -181,9 +184,90 @@ module CLLVM [system] {
 #include <llvm-c/Types.h>
 ```
 
-If you've completed all of the steps above, you should be able to open up `IRGenerator.swift`, type `import CLLVM` and compile successfully.
+If you've completed all of the steps above, you should be able to open up `IRGenerator.swift`, type `import CLLVM` and compile successfully.  
 
-# Implementing the IR-Generator
+> If you're using Xcode, try typing `LLVM` into the file. You should see a long list of suggested types and functions that all look very "unswifty".
+
+# Writing the IR-Generator
+
+When we wrote our parser, we created a transformation from tokens to AST nodes. The AST then represents the *entire* parsed program. So if we want to translate a *Kaleidoscope* program to LLVM-IR, we only need to map our AST to LLVM-IR. And our AST is really simply:
+
+```swift
+// Parser.swift
+
+public struct Program {
+    var externals: [Prototype] = []
+    var functions: [Function] = []
+    var expressions: [Expression] = []
+}
+```
+
+All we have are external definitions, functions and expressions.
+
+## Structure
+
+As mentioned above, LLVM programs are composed of modules.
+
+> Modules are the top level container of all other LLVM Intermediate Representation (IR) objects. [↗](https://llvm.org/doxygen/classllvm_1_1Module.html#details)
+
+That is, if we want to create a representation of something like an if-expression or a binary operation in LLVM-IR, we need to place it in such a module container. The type of such a container is `LLVMModuleRef`. Although *LLVM* allows for multiple modules per program, we will only need one.  
+
+> [The instruction builder] is a helper object that makes it easy to generate LLVM instructions. Instances of [`LLVMBuilderRef`] keep track of the current place to insert instructions and has methods to create new instructions. [↗](http://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#code-generation-setup)
+
+Also, we will of course need access to the AST from which to generate IR:
+
+```swift
+public final class IRGenerator {
+
+    public private(set) var ast: Program
+    public private(set) var module: LLVMModuleRef
+    private let irBuilder: LLVMBuilderRef
+
+    public init(ast: Program) {
+        self.ast = ast
+        module = LLVMModuleCreateWithName("kaleidoscope")
+        builder = LLVMCreateBuilderInContext(LLVMGetGlobalContext())
+    }
+}
+```
+
+As you can see, calling into the LLVM C-bindings is rather unergonomic. E.g. `LLVMModuleCreateWithName(_:)` actually takes an `UnsafePointer<Int8>!` as parameter. Luckily Swift can often bridge from "normal" types to these more unwieldy types when suitable. In the initializer above we just pass a string literal where an `UnsafePointer<Int8>!` is expected, and Swift transparently bridges it. Apple's documentation on [`UnsafePointer`](https://developer.apple.com/documentation/swift/unsafepointer) is actually quite a nice for picking up the basics of pointers in Swift - which we will be dealing with a lot when using the LLVM-C bindings.  
+So... to create the module we call `LLVMModuleCreateWithName(_:)` and pass it an arbitrary name (`"kaleidoscope"` seemed fitting).  
+
+To obtain the aforementioned "representations" of program constructs, we will use LLVM's instruction builder `LLVMBuilderRef`.  
+The builder is created by calling `LLVMCreateBuilderInContext(_:)` which expects an `LLVMContextRef!`. What is an LLVM context though? The documentation just says that...
+
+> [i]t (opaquely) owns and manages the core "global" data of LLVM's core infrastructure, including the type and constant uniquing tables. [↗](http://llvm.org/doxygen/classllvm_1_1LLVMContext.html#details)
+
+The fact that it's "opaque", kind of tells us that we don't need need to understand what exactly it does. And as [CAFxX](https://stackoverflow.com/users/414813/cafxx) puts it:
+
+> Just think of it as a reference to the core LLVM "engine" that you should pass to the various methods that require a LLVMContext. [↗](https://stackoverflow.com/a/13186374/3208492)
+
+I've seen quite a few source use `LLVMGetGlobalContext()` as a means of obtaining a context. According to the LLVM Developers mailing list though...
+
+> `getGlobalContext()` has been removed a few years ago. You need to manage the lifetime of the context yourself. [↗](https://groups.google.com/forum/#!topic/llvm-dev/w4eSx2uM2Ig)
+
+So instead we will use `LLVMContextCreate()` and retain the resulting context in our IR-generator:
+
+```swift
+public final class IRGenerator {
+
+    // ...
+
+    private let context: LLVMContextRef
+    private let irBuilder: LLVMBuilderRef
+
+    public init(ast: Program) {
+
+        // ...
+
+        context = LLVMContextCreate()
+        builder = LLVMCreateBuilderInContext(context)
+    }
+}
+```
+
+
 
 
 Until then, thanks for reading!
