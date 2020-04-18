@@ -212,8 +212,6 @@ As mentioned above, LLVM programs are composed of modules.
 
 That is, if we want to create a representation of something like an if-expression or a binary operation in LLVM-IR, we need to place it in such a module container. The type of such a container is `LLVMModuleRef`. Although *LLVM* allows for multiple modules per program, we will only need one.  
 
-> [The instruction builder] is a helper object that makes it easy to generate LLVM instructions. Instances of [`LLVMBuilderRef`] keep track of the current place to insert instructions and has methods to create new instructions. [↗](http://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#code-generation-setup)
-
 Also, we will of course need access to the AST from which to generate IR:
 
 ```swift
@@ -221,12 +219,10 @@ public final class IRGenerator {
 
     public private(set) var ast: Program
     public private(set) var module: LLVMModuleRef
-    private let irBuilder: LLVMBuilderRef
 
     public init(ast: Program) {
         self.ast = ast
         module = LLVMModuleCreateWithName("kaleidoscope")
-        builder = LLVMCreateBuilderInContext(LLVMGetGlobalContext())
     }
 }
 ```
@@ -235,11 +231,15 @@ As you can see, calling into the LLVM C-bindings is rather unergonomic. E.g. `LL
 So... to create the module we call `LLVMModuleCreateWithName(_:)` and pass it an arbitrary name (`"kaleidoscope"` seemed fitting).  
 
 To obtain the aforementioned "representations" of program constructs, we will use LLVM's instruction builder `LLVMBuilderRef`.  
-The builder is created by calling `LLVMCreateBuilderInContext(_:)` which expects an `LLVMContextRef!`. What is an LLVM context though? The documentation just says that...
+
+> [The instruction builder] is a helper object that makes it easy to generate LLVM instructions. Instances of [`LLVMBuilderRef`] keep track of the current place to insert instructions and has methods to create new instructions. [↗](http://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#code-generation-setup)
+
+The builder is created by calling `LLVMCreateBuilderInContext(_:)` which expects an `LLVMContextRef!`. What is an LLVM context though?  
+The documentation just says that...
 
 > [i]t (opaquely) owns and manages the core "global" data of LLVM's core infrastructure, including the type and constant uniquing tables. [↗](http://llvm.org/doxygen/classllvm_1_1LLVMContext.html#details)
 
-The fact that it's "opaque", kind of tells us that we don't need need to understand what exactly it does. And as [CAFxX](https://stackoverflow.com/users/414813/cafxx) puts it:
+The fact that it's "opaque", kind of tells us that we don't need to understand what exactly it does. And as [CAFxX](https://stackoverflow.com/users/414813/cafxx) puts it:
 
 > Just think of it as a reference to the core LLVM "engine" that you should pass to the various methods that require a LLVMContext. [↗](https://stackoverflow.com/a/13186374/3208492)
 
@@ -255,7 +255,7 @@ public final class IRGenerator {
     // ...
 
     private let context: LLVMContextRef
-    private let irBuilder: LLVMBuilderRef
+    private let builder: LLVMBuilderRef
 
     public init(ast: Program) {
 
@@ -267,8 +267,120 @@ public final class IRGenerator {
 }
 ```
 
+## Generator Methods
 
+Now that we have defined the tools required for generating IR, let's actually generate some IR.  
+Similarly to the parser, we'll start at the *"lowest level"* of AST nodes - expressions - and work our way up to the arguably simpler, but more composed nodes - functions. Since there are a couple more concepts we need to know in order to generate IR, we'll first go through some fundamentals.
 
+### Fundamentals
+
+Let's start by generating IR for the simplest type of expression, a `.number`:
+
+```swift
+extension IRGenerator {
+
+    private func generateNumberExpression(_ number: Double) -> LLVMValueRef {
+        return LLVMConstReal(floatType, number)
+    }
+}
+```
+
+The simplicity of this example allows us to nicely examine the new concepts.  
+
+First there's the return type `LLVMValueRef`. This type is the C-binding analogue of the C++ `llvm::Value` class. If you follow the link below, you can find a nice graph of `llvm::Value`'s subtypes:
+
+> This is a very important LLVM class. It is the base class of all values computed by a program that may be used as operands to other values. `Value` is the super class of other important classes such as `Instruction` and `Function`. [↗](https://llvm.org/doxygen/classllvm_1_1Value.html)
+
+Infact `LLVMValueRef` will be the return type to all of our generator methods, as it represents binary expression, if-else-expressions, function calls, etc.  
+
+Next there's the function that actually creates the return value: `LLVMConstReal`. This functions belongs to a group of LLVM's functions that create *scalar constant* values, i.e. non-composite or single-value types:
+
+> Functions in this group model `LLVMValueRef` instances that correspond to constants referring to scalar types. [↗](https://llvm.org/doxygen/group__LLVMCCoreValueConstantScalar.html)
+
+It contains functions like `LLVMConstInt`, `LLVMConstReal`, etc. For the purpose of *Kaleidoscope* we will only need `LLVMConstReal` though, because our language only supports floating point values.  
+What if we *did* want to support multiple types though, specifically multiple different types of real or integer values? This is what the first parameter in these scalar constant functions is for: `LLVMTypeRef`. As the documentation for `llvm::Value` explains:
+
+> All `Value`s have a `Type`. `Type` is not a subclass of `Value`. [↗](https://llvm.org/doxygen/classllvm_1_1Value.html)
+
+So just like with `LLVMValueRef`, `LLVMTypeRef` is the base type for an an entire [class hierarchy](https://llvm.org/doxygen/classllvm_1_1Type.html) which in this case represents *types* instead of *values*.  
+Creating instances of `LLVMTypeRef`s basically works like creating `LLVMValueRef`s, by using a special LLVM provided function. E.g. that undefined `floatType` value used above should simply be the `LLVMTypeRef` returned by `LLVMFloatTypeInContext`. And since we're going to be using that exact type in a couple of places, let's store a reference to it in our IR-generator:
+
+```swift
+public final class IRGenerator {
+
+    // ...
+
+    private let floatType: LLVMTypeRef
+
+    public init(ast: Program) {
+
+        // ...
+
+        floatType = LLVMFloatTypeInContext(context)
+    }
+}
+```
+
+The documentation for `LLVMFloatTypeInContext` states that it returns a 32-bit floating-point type. If we ever want to use a different floating-point type we can just call `LLVMHalfTypeInContext`, `LLVMDoubleTypeInContext`, `LLVMFP128TypeInContext`, etc. instead.
+
+So now that we have a grasp on the fundamentals of working with `LLVMValueRef`s, let's look at some more interesting examples.
+
+### Expressions
+
+First we will deal with binary expressions:
+
+```swift
+extension IRGenerator {
+
+    // ...
+
+    private func generateBinaryExpression(
+        lhs: Expression, operator: Operator, rhs: Expression
+    ) throws -> LLVMValueRef {
+
+        let lhs = try generateExpression(lhs)
+        let rhs = try generateExpression(rhs)
+
+        switch `operator` {
+        case .plus:   return LLVMBuildFAdd(builder, lhs, rhs, "sum")
+        case .minus:  return LLVMBuildFSub(builder, lhs, rhs, "difference")
+        case .times:  return LLVMBuildFMul(builder, lhs, rhs, "product")
+        case .divide: return LLVMBuildFDiv(builder, lhs, rhs, "quotient")
+        case .modulo: return LLVMBuildFRem(builder, lhs, rhs, "remainder")
+        }
+    }
+}
+```
+
+First we generate the IR for the left- and right-hand side expressions (`lhs` and `rhs`). We haven't implemented `generateExpression(_:)` yet, but as mentioned above, all of our generator methods will return `LLVMValueRef`s. So the values in `lhs` and `rhs` are IR-representations of the corresponding expressions.  
+Next we create the IR-representations of the instructions corresponding to the given `operator`.
+
+> An instruction builder represents a point within a basic block and is the exclusive means of building instructions using the C interface. [↗](https://llvm.org/doxygen/group__LLVMCCoreInstructionBuilder.html#details)
+
+In this case (of only creating single instructions like `+` or `%`) the
+function builder's use isn't really apparent yet. We can basically create the instructions' IR like we did for the constant values above, by calling a special LLVM function that returns the corresponding `LLVMValueRef`. Only this time, we also have to pass along our `LLVMBuilderRef` instance as well some string as last parameter. The point of those strings will become more apparent in a moment, when we generate the IR for if-else-expressions. For now all you need to know is that the string used above are arbitrary, we could have also chosen `"asdf"`, `"123"`, etc.
+
+If-else-expressions will be the most complicated part of our IR-generator. They are the only part of *Kaleidoscope* that introduces any control flow, which requires us to have an understanding of *basic blocks*.
+
+> A basic block is simply a container of instructions that execute sequentially. Basic blocks are `Value`s because they are referenced by instructions such as branches and switch tables. The type of a `BasicBlock` is `Type::LabelTy` because the basic block represents a label to which a branch can jump.  
+A well formed basic block is formed of a list of non-terminating instructions followed by a single terminator instruction. Terminator instructions may not occur in the middle of basic blocks, and must terminate the blocks. The `BasicBlock` class allows malformed basic blocks to occur because it may be useful in the intermediate stage of constructing or modifying a program. However, the verifier will ensure that basic blocks are "well formed". [↗](https://llvm.org/doxygen/classllvm_1_1BasicBlock.html#details)
+
+So basic blocks are labled buckets in which we place our sequential instructions. That's why we had to pass those string parameters when generating `+`, `%`, etc. instructions above. The function builder placed the instructions in basic blocks and needed labels for them.  
+Generating if-else-expressions will actually require us to work with the basic blocks themselves a little bit, so we start off by getting the functions builder's current basic block:
+
+```swift
+private func generateIfElseExpression(
+    condition: Expression, then: Expression, else: Expression
+) throws -> LLVMValueRef {
+
+    let entryBlock = LLVMGetInsertBlock(builder)
+}
+
+```
+
+As mentioned above *"[a]n instruction builder represents a point within a basic block"*. So this is the block in which it is currently positioned.
+
+---
 
 Until then, thanks for reading!
 
