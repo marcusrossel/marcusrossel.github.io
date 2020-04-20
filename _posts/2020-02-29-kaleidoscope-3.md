@@ -78,7 +78,7 @@ export PATH="/usr/local/opt/llvm/bin:$PATH"
 Now that we have LLVM installed on our machines, we need to add it to our existing Swift package. More specifically, we need to tie the *C-bindings* of LLVM into our project. Natively LLVM is written in C++, but since Swift can't call into C++ code (yet) we need to use the C-bindings, which Swift *can* interact with.  
 Importing a system library into a Swift package is a little bit involved. You can read a detailed of the process in the [corresponding SPM documentation](https://github.com/apple/swift-package-manager/blob/master/Documentation/Usage.md#requiring-system-libraries), but if you don't care about such details you can just copy the following steps.
 
-First we need to adjust our `Package.swift` as follows:
+First we need to adjust the `Package.swift` as follows:
 
 ```swift
 // swift-tools-version:5.2
@@ -190,7 +190,7 @@ If you've completed all of the steps above, you should be able to open up `IRGen
 
 # Writing the IR-Generator
 
-When we wrote our parser, we created a transformation from tokens to AST nodes. The AST then represents the *entire* parsed program. So if we want to translate a *Kaleidoscope* program to LLVM-IR, we only need to map our AST to LLVM-IR. And our AST is really simply:
+When we wrote our parser, we created a transformation from tokens to AST nodes. The AST then represents the *entire* parsed program. So if we want to translate a *Kaleidoscope* program to LLVM-IR, we only need to map the AST to LLVM-IR. And our AST is really simply:
 
 ```swift
 // Parser.swift
@@ -294,7 +294,7 @@ First there's the return type `LLVMValueRef`. This type is the C-binding analogu
 
 > This is a very important LLVM class. It is the base class of all values computed by a program that may be used as operands to other values. `Value` is the super class of other important classes such as `Instruction` and `Function`. [↗](https://llvm.org/doxygen/classllvm_1_1Value.html)
 
-Infact `LLVMValueRef` will be the return type to all of our generator methods, as it represents binary expression, if-else expressions, function calls, etc.  
+In fact `LLVMValueRef` will be the return type to all of our generator methods, as it represents binary expression, if-else expressions, function calls, etc.  
 
 Next there's the function that actually creates the return value: `LLVMConstReal`. This functions belongs to a group of LLVM's functions that create *scalar constant* values, i.e. non-composite or single-value types:
 
@@ -366,7 +366,7 @@ If-else expressions will be the most complicated part of our IR-generator. They 
 > A basic block is simply a container of instructions that execute sequentially. Basic blocks are `Value`s because they are referenced by instructions such as branches and switch tables. The type of a `BasicBlock` is `Type::LabelTy` because the basic block represents a label to which a branch can jump.  
 A well formed basic block is formed of a list of non-terminating instructions followed by a single terminator instruction. Terminator instructions may not occur in the middle of basic blocks, and must terminate the blocks. The `BasicBlock` class allows malformed basic blocks to occur because it may be useful in the intermediate stage of constructing or modifying a program. However, the verifier will ensure that basic blocks are "well formed". [↗](https://llvm.org/doxygen/classllvm_1_1BasicBlock.html#details)
 
-So basic blocks are labled buckets in which we place our sequential instructions. That's why we had to pass those string parameters when generating `+`, `%`, etc. instructions above. The instruction builder placed the instructions in basic blocks and needed labels for them.  
+So basic blocks are labled buckets in which we place sequential instructions. That's why we had to pass those string parameters when generating `+`, `%`, etc. instructions above. The instruction builder placed the instructions in basic blocks and needed labels for them.  
 Generating if-else expressions will actually require us to work with the basic blocks themselves, so we start off by getting the instruction builder's current basic block:
 
 ```swift
@@ -421,7 +421,7 @@ So let's say we're in the middle of generating the IR for some program that cont
 | unknown basic blocks |
 |          ...         |
 |----------------------|
-|      entry block     | < position of our IR builder
+|      entry block     | < position of the IR builder
 |----------------------|
 |          ...         |
 | unknown basic blocks |
@@ -439,7 +439,7 @@ After our first call to `LLVMInsertBasicBlockInContext` it looks like this:
 |----------------------|
 |      merge block     |
 |----------------------|
-|      entry block     | < position of our IR builder
+|      entry block     | < position of the IR builder
 |----------------------|
 |          ...         |
 | unknown basic blocks |
@@ -447,7 +447,7 @@ After our first call to `LLVMInsertBasicBlockInContext` it looks like this:
 ------------------------
 ```
 
-Since we want to generate our if-else expression *after* the current position of our IR builder though, we need to move the `entryBlock` using `LLVMMoveBasicBlockAfter`. This function moves a given block after another given block, so in our case we achieve this:
+Since we want to generate the if-else expression *after* the current position of the IR builder though, we need to move the `entryBlock` using `LLVMMoveBasicBlockAfter`. This function moves a given block after another given block, so in our case we achieve this:
 
 ```plaintext
 ------------------------
@@ -455,7 +455,7 @@ Since we want to generate our if-else expression *after* the current position of
 | unknown basic blocks |
 |          ...         |
 |----------------------|
-|      entry block     | < position of our IR builder
+|      entry block     | < position of the IR builder
 |----------------------|
 |      merge block     |
 |----------------------|
@@ -473,7 +473,7 @@ Next we insert the remaining basic blocks, so we end up with:
 | unknown basic blocks |
 |          ...         |
 |----------------------|
-|      entry block     | < position of our IR builder
+|      entry block     | < position of the IR builder
 |----------------------|
 |         if block     |
 |----------------------|
@@ -520,24 +520,67 @@ extension IRGenerator {
 
         LLVMPositionBuilderAtEnd(builder, ifBlock)
 
-        let condition = try generateExpression(condition)
-        let floatForFalse = LLVMConstReal(floatType, Double(LLVMBool(false)))
-        let ifHeader = LLVMBuildFCmp(builder, LLVMRealONE, condition, floatForFalse, "condition")
+        let condition = LLVMBuildFCmp(
+            /* builder:   */ builder,
+            /* predicate: */ LLVMRealONE,
+            /* lhs:       */ try generateExpression(condition),
+            /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
+            /* label:     */ "condition"
+        )
 
-        LLVMBuildCondBr(builder, ifHeader, thenBlock, elseBlock)
+        LLVMBuildCondBr(builder, condition, thenBlock, elseBlock)
     }
 }
 ```
 
-As you can see, we first need to move the insertion position of our instruction builder to the `ifBlock` using `LLVMPositionBuilderAtEnd`. Then we create a `comparison` instruction that will be used to determine the destination of the branch. Lastly we build the actual conditional branch instruction using `LLVMBuildCondBr` with the `thenBlock` and `elseBlock` as our destinations, depending on the value of `comparison`.  
-**The construction of the comparison...**
+As you can see, we first need to move the insertion position of the instruction builder to the `ifBlock` using `LLVMPositionBuilderAtEnd`. Then we create a `condition` expression that will be used to determine the destination of the branch. Lastly we build the actual conditional branch instruction using `LLVMBuildCondBr` with the `thenBlock` and `elseBlock` as the destinations, depending on the value of `condition`.  
+The condition itself is constructed using `LLVMBuildFCmp`, which as the name suggests compares two floating-point values. It's second parameter is a predicate that determines which kind of comparison should be performed - in this case [`LLVMRealONE`](https://llvm.org/doxygen/group__LLVMCCoreTypes.html#ga242440d0e4a6d84d80b91df15e161971). This [basically](https://stackoverflow.com/q/40327806/3208492) checks the values for inequality. We consider an expression to be *false* if it evaluates to *0*. Hence, to determine whether an expression is *true*, we need tom make sure it is *not 0*.  
 
+No to the remaining then-, else- and merge-blocks:
 
+```swift
+extension IRGenerator {
 
+    private func generateIfElseExpression /* ... */ {
 
+        // ...
 
+        LLVMPositionBuilderAtEnd(builder, thenBlock)
+        LLVMBuildBr(builder, mergeBlock)
 
+        LLVMPositionBuilderAtEnd(builder, elseBlock)
+        LLVMBuildBr(builder, mergeBlock)
 
+        LLVMPositionBuilderAtEnd(builder, mergeBlock)
+        let phiNode = LLVMBuildPhi(builder, floatType, "result")!
+        var phiValues: [LLVMValueRef?] = [try generateExpression(then), try generateExpression(`else`)]
+        var phiBlocks = [thenBlock, elseBlock]
+        LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)
+
+        return phiNode
+    }
+}
+```
+
+I'd guess that this isn't exactly what you expected. Why aren't we just returning the IR for our `then` and `else` expressions from the then- and else-blocks? Well honestly, I'm not really sure. I just know that in the context of LLVM, this scenario is covered by *phi nodes*. The most understandable explanation I've read on them so far is that...
+
+> All LLVM instructions are represented in the Static Single Assignment (SSA) form. Essentially, this means that any variable can be assigned to only once. Such a representation facilitates better optimization, among other benefits.  
+A consequence of single assignment are PHI (Φ) nodes. These are required when a variable can be assigned a different value based on the path of control flow. For example, the value of `b` at the end of execution of the snippet below:
+```
+a = 1;
+if (v < 10)
+    a = 2;
+b = a;
+```
+cannot be determined statically. The value of ‘2’ cannot be assigned to the ‘original’ `a`, since a can be assigned to only once. There are two `a`s in there, and the last assignment has to choose between which version to pick. This is accomplished by adding a PHI node. [↗](http://www.llvmpy.org/llvmpy-doc/dev/doc/llvm_concepts.html#ssa-form-and-phi-nodes)
+
+So in other words, a phi node allows us to represent a value whose content consists of two values, of which one is selected depending on control flow. More specifically, in LLVM a phi node selects its value depending on which basic block was last exited. This explains the empty then- and else-blocks that contain nothing but a branch to the `mergeBlock`. Their sole purpose is to be used for selection in the following phi node.  
+
+The phi node itself is created by calling `LLVMBuildPhi`. Capturing the returned value in a variable reveals that all of the functions we've called so far for creating `LLVMValueRefs` actually returned `LLVMValueRefs!`. So this time we actually need to unwrap that value. Like most other builder functions `LLVMBuildPhi` expects a type parameter, that determines which kind of value the phi nodes returns, as well as a label.  
+Lastly we need to tell the phi node which value to return in which case. `LLVMAddIncoming` allows us to specify the `phiValues` that should be returned depending on which of the `phiBlocks` was the last exited basic block. We also have to pass the number of options in the last parameter, because I guess phi nodes support more than just two options (e.g. if we wanted to create an if-elseif-else expression).  
+The final thing for us to do is to actually return a value from this function, which is supposed to be whichever value is the result of the if-else expression, so exactly the value of the phi node.
+
+#### Call Expressions
 
 ---
 

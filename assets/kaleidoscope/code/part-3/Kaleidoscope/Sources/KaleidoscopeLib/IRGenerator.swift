@@ -43,7 +43,8 @@ extension IRGenerator {
     private func generateIfElseExpression(
         condition: Expression, then: Expression, else: Expression
     ) throws -> LLVMValueRef {
-    
+        // Creates and arranges the required basic blocks.
+        
         let entryBlock = LLVMGetInsertBlock(builder)
         
         let mergeBlock = LLVMInsertBasicBlockInContext(context, entryBlock, "merge")
@@ -55,11 +56,42 @@ extension IRGenerator {
         
         LLVMBuildBr(builder, ifBlock)
         
+        // Generates the if-block.
+        
         LLVMPositionBuilderAtEnd(builder, ifBlock)
-        let condition = try generateExpression(condition)
-        let floatForFalse = LLVMConstReal(floatType, Double(LLVMBool(false)))
-        let ifHeader = LLVMBuildFCmp(builder, LLVMRealONE, condition, floatForFalse, "condition")
-        LLVMBuildCondBr(builder, ifHeader, thenBlock, elseBlock)
+        
+        let condition = LLVMBuildFCmp(
+            /* builder:   */ builder,
+            /* predicate: */ LLVMRealONE,
+            /* lhs:       */ try generateExpression(condition),
+            /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
+            /* label:     */ "condition"
+        )
+        
+        LLVMBuildCondBr(builder, condition, thenBlock, elseBlock)
+        
+        // Generates the then-block.
+        LLVMPositionBuilderAtEnd(builder, thenBlock)
+        LLVMBuildBr(builder, mergeBlock)
+        
+        // Generates the else-block.
+        LLVMPositionBuilderAtEnd(builder, elseBlock)
+        LLVMBuildBr(builder, mergeBlock)
+        
+        // Generates the phi node.
+        
+        LLVMPositionBuilderAtEnd(builder, mergeBlock)
+        
+        let phiNode = LLVMBuildPhi(builder, floatType, "result")!
+        var phiValues: [LLVMValueRef?] = [try generateExpression(then), try generateExpression(`else`)]
+        var phiBlocks = [thenBlock, elseBlock]
+        LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)
+        
+        return phiNode
+    }
+    
+    func generateExpression(_ e: Expression) throws -> LLVMValueRef {
+        
     }
     
 }
