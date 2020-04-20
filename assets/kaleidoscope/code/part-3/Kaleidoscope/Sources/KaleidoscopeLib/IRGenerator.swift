@@ -45,6 +45,21 @@ extension IRGenerator {
     ) throws -> LLVMValueRef {
     
         let entryBlock = LLVMGetInsertBlock(builder)
+        
+        let mergeBlock = LLVMInsertBasicBlockInContext(context, entryBlock, "merge")
+        LLVMMoveBasicBlockAfter(mergeBlock, entryBlock)
+        
+        let elseBlock = LLVMInsertBasicBlockInContext(context, mergeBlock, "else")
+        let thenBlock = LLVMInsertBasicBlockInContext(context, elseBlock, "then")
+        let ifBlock =   LLVMInsertBasicBlockInContext(context, thenBlock, "if")
+        
+        LLVMBuildBr(builder, ifBlock)
+        
+        LLVMPositionBuilderAtEnd(builder, ifBlock)
+        let condition = try generateExpression(condition)
+        let floatForFalse = LLVMConstReal(floatType, Double(LLVMBool(false)))
+        let ifHeader = LLVMBuildFCmp(builder, LLVMRealONE, condition, floatForFalse, "condition")
+        LLVMBuildCondBr(builder, ifHeader, thenBlock, elseBlock)
     }
     
 }

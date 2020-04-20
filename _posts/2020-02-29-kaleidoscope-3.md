@@ -5,15 +5,15 @@ title: "Implementing LLVM's Kaleidoscope in Swift - Part 3"
 Last post we implemented a parser that assembles the output of the lexer into a more meaningful abstract syntax tree, i.e. into expressions, function definitions and external declarations. In this post we're going to generate LLVM-IR from those AST-nodes.
 
 > *Important note:*  
-Although I have been able to work through implementing an IR-generator for *Kaleidoscope*, I am by no means a source of knowledge on this topic. Hence this post will rely *heavily* on external sources, as manifest in the quote-fest below.
+Although I have been able to work through implementing an IR-generator for *Kaleidoscope*, I am by no means an expert on this topic. Hence this post will rely *heavily* on external sources, as manifest in the quote-fest below.
 
 ---
 
-*Considering that this series of posts is called *"Implementing **LLVM**'s Kaleidoscope in Swift"* you might have noticed a distinct lack of *LLVM*-ness so far. That's because so far we've been busy turning *Kaleidoscope*-code into some representation the *we* understand - i.e. our AST. The job of *LLVM* is to turn a code-representation that *it* understands into an executable program. In consequence, we have to convert our AST-representation into *LLVM*'s *"intermediate representation" (IR)*. For that purpose we'll create an *"IR-Generator"*.
+Considering that this series of posts is called *"Implementing **LLVM**'s Kaleidoscope in Swift"* you might have noticed a distinct lack of LLVM-ness so far. That's because so far we've been busy turning *Kaleidoscope*-code into some representation that *we* understand - i.e. our AST. The job of LLVM is to turn a code-representation that *it* understands into an executable program. In consequence, we have to convert our AST-representation into LLVM's *"intermediate representation" (IR)*. For that purpose we'll create an *"IR-Generator"*.
 
 # LLVM IR
 
-*LLVM*'s intermediate representation in itself is a [vast topic](https://llvm.org/docs/LangRef.html), but for the purpose of *Kaleidoscope* we only need to understand a couple of its concepts. I have selected relevant sections from the documentation for explanation:
+LLVM's intermediate representation in itself is a [vast topic](https://llvm.org/docs/LangRef.html), but for the purpose of *Kaleidoscope* we only need to understand a couple of its concepts. I have selected relevant sections from the documentation for explanation:
 
 > The LLVM code representation is designed to be used in three different forms: as an in-memory compiler IR, as an on-disk bitcode representation (suitable for fast loading by a Just-In-Time compiler), and as a human readable **assembly language representation**. [...] It aims to be a “universal IR” of sorts, by being at a low enough level that high-level ideas may be cleanly mapped to it [...]. [↗](https://llvm.org/docs/LangRef.html#introduction)
 
@@ -59,7 +59,7 @@ Before we can dive into using said LLVM-library, we need to tie it into our pack
 
 > The LLVM project has multiple components. The core of the project is itself called “LLVM”. This contains all of the tools, libraries, and header files needed to process intermediate representations and converts it into object files. Tools include an assembler, disassembler, bitcode analyzer, and bitcode optimizer. [↗](https://llvm.org/docs/GettingStarted.html#overview)
 
-For installation I simply used *LLVM*'s [Homebrew formula](https://formulae.brew.sh/formula/llvm):
+For installation I simply used LLVM's [Homebrew formula](https://formulae.brew.sh/formula/llvm):
 
 ```terminal
 marcus@~: brew install llvm
@@ -75,7 +75,7 @@ export PATH="/usr/local/opt/llvm/bin:$PATH"
 
 # Adding LLVM as a Dependency
 
-Now that we have *LLVM* installed on our machines, we need to add it to our existing Swift package. More specifically, we need to tie the *C-bindings* of *LLVM* into our project. Natively *LLVM* is written in C++, but since Swift can't call into C++ code (yet) we need to use the C-bindings, which Swift *can* interact with.  
+Now that we have LLVM installed on our machines, we need to add it to our existing Swift package. More specifically, we need to tie the *C-bindings* of LLVM into our project. Natively LLVM is written in C++, but since Swift can't call into C++ code (yet) we need to use the C-bindings, which Swift *can* interact with.  
 Importing a system library into a Swift package is a little bit involved. You can read a detailed of the process in the [corresponding SPM documentation](https://github.com/apple/swift-package-manager/blob/master/Documentation/Usage.md#requiring-system-libraries), but if you don't care about such details you can just copy the following steps.
 
 First we need to adjust our `Package.swift` as follows:
@@ -210,7 +210,7 @@ As mentioned above, LLVM programs are composed of modules.
 
 > Modules are the top level container of all other LLVM Intermediate Representation (IR) objects. [↗](https://llvm.org/doxygen/classllvm_1_1Module.html#details)
 
-That is, if we want to create a representation of something like an if-expression or a binary operation in LLVM-IR, we need to place it in such a module container. The type of such a container is `LLVMModuleRef`. Although *LLVM* allows for multiple modules per program, we will only need one.  
+That is, if we want to create a representation of something like an if-else expression or a binary operation in LLVM-IR, we need to place it in such a module container. The type of such a container is `LLVMModuleRef`. Although LLVM allows for multiple modules per program, we will only need one.  
 
 Also, we will of course need access to the AST from which to generate IR:
 
@@ -270,9 +270,12 @@ public final class IRGenerator {
 ## Generator Methods
 
 Now that we have defined the tools required for generating IR, let's actually generate some IR.  
+
+### Expressions
+
 Similarly to the parser, we'll start at the *"lowest level"* of AST nodes - expressions - and work our way up to the arguably simpler, but more composed nodes - functions. Since there are a couple more concepts we need to know in order to generate IR, we'll first go through some fundamentals.
 
-### Fundamentals
+#### Fundamentals
 
 Let's start by generating IR for the simplest type of expression, a `.number`:
 
@@ -291,7 +294,7 @@ First there's the return type `LLVMValueRef`. This type is the C-binding analogu
 
 > This is a very important LLVM class. It is the base class of all values computed by a program that may be used as operands to other values. `Value` is the super class of other important classes such as `Instruction` and `Function`. [↗](https://llvm.org/doxygen/classllvm_1_1Value.html)
 
-Infact `LLVMValueRef` will be the return type to all of our generator methods, as it represents binary expression, if-else-expressions, function calls, etc.  
+Infact `LLVMValueRef` will be the return type to all of our generator methods, as it represents binary expression, if-else expressions, function calls, etc.  
 
 Next there's the function that actually creates the return value: `LLVMConstReal`. This functions belongs to a group of LLVM's functions that create *scalar constant* values, i.e. non-composite or single-value types:
 
@@ -325,14 +328,10 @@ The documentation for `LLVMFloatTypeInContext` states that it returns a 32-bit f
 
 So now that we have a grasp on the fundamentals of working with `LLVMValueRef`s, let's look at some more interesting examples.
 
-### Expressions
-
-First we will deal with binary expressions:
+#### Binary Expressions
 
 ```swift
 extension IRGenerator {
-
-    // ...
 
     private func generateBinaryExpression(
         lhs: Expression, operator: Operator, rhs: Expression
@@ -358,27 +357,187 @@ Next we create the IR-representations of the instructions corresponding to the g
 > An instruction builder represents a point within a basic block and is the exclusive means of building instructions using the C interface. [↗](https://llvm.org/doxygen/group__LLVMCCoreInstructionBuilder.html#details)
 
 In this case (of only creating single instructions like `+` or `%`) the
-function builder's use isn't really apparent yet. We can basically create the instructions' IR like we did for the constant values above, by calling a special LLVM function that returns the corresponding `LLVMValueRef`. Only this time, we also have to pass along our `LLVMBuilderRef` instance as well some string as last parameter. The point of those strings will become more apparent in a moment, when we generate the IR for if-else-expressions. For now all you need to know is that the string used above are arbitrary, we could have also chosen `"asdf"`, `"123"`, etc.
+instruction builder's use isn't really apparent yet. We can basically create the instructions' IR like we did for the constant values above, by calling a special LLVM function that returns the corresponding `LLVMValueRef`. Only this time, we also have to pass along our `LLVMBuilderRef` instance as well some string as last parameter. The point of those strings will become more apparent in a moment, when we generate the IR for if-else expressions. For now all you need to know is that the string used above are arbitrary, we could have also chosen `"asdf"`, `"123"`, etc.
 
-If-else-expressions will be the most complicated part of our IR-generator. They are the only part of *Kaleidoscope* that introduces any control flow, which requires us to have an understanding of *basic blocks*.
+#### If-Else Expressions
+
+If-else expressions will be the most complicated part of our IR-generator. They are the only part of *Kaleidoscope* that introduces any control flow, which requires us to have an understanding of *basic blocks*.
 
 > A basic block is simply a container of instructions that execute sequentially. Basic blocks are `Value`s because they are referenced by instructions such as branches and switch tables. The type of a `BasicBlock` is `Type::LabelTy` because the basic block represents a label to which a branch can jump.  
 A well formed basic block is formed of a list of non-terminating instructions followed by a single terminator instruction. Terminator instructions may not occur in the middle of basic blocks, and must terminate the blocks. The `BasicBlock` class allows malformed basic blocks to occur because it may be useful in the intermediate stage of constructing or modifying a program. However, the verifier will ensure that basic blocks are "well formed". [↗](https://llvm.org/doxygen/classllvm_1_1BasicBlock.html#details)
 
-So basic blocks are labled buckets in which we place our sequential instructions. That's why we had to pass those string parameters when generating `+`, `%`, etc. instructions above. The function builder placed the instructions in basic blocks and needed labels for them.  
-Generating if-else-expressions will actually require us to work with the basic blocks themselves a little bit, so we start off by getting the functions builder's current basic block:
+So basic blocks are labled buckets in which we place our sequential instructions. That's why we had to pass those string parameters when generating `+`, `%`, etc. instructions above. The instruction builder placed the instructions in basic blocks and needed labels for them.  
+Generating if-else expressions will actually require us to work with the basic blocks themselves, so we start off by getting the instruction builder's current basic block:
 
 ```swift
-private func generateIfElseExpression(
-    condition: Expression, then: Expression, else: Expression
-) throws -> LLVMValueRef {
+extension IRGenerator {
 
-    let entryBlock = LLVMGetInsertBlock(builder)
+    private func generateIfElseExpression(
+        condition: Expression, then: Expression, else: Expression
+    ) throws -> LLVMValueRef {
+
+        let entryBlock = LLVMGetInsertBlock(builder)
+
+        // ...
+    }
 }
-
 ```
 
-As mentioned above *"[a]n instruction builder represents a point within a basic block"*. So this is the block in which it is currently positioned.
+As mentioned above *"[a]n instruction builder represents a point within a basic block"*, so `entryBlock` is the block in which it is currently positioned.
+
+Next, we need to set up a structure of basic blocks in which we can place the different parts of an if-else expression:
+
+* condition - *"if"* part
+* success path - *"then"* part
+* failure path - *"else"* part
+* merging path (more on that later)
+
+In my opinion the APIs for inserting and moving basic blocks around aren't quite as neat as they could be, so the following might look a bit strange. Also, the lack of argument labels in C exactly contribute to legibility.
+
+```swift
+extension IRGenerator {
+
+    private func generateIfElseExpression /* ... */ {
+
+        // ...
+
+        let mergeBlock = LLVMInsertBasicBlockInContext(context, entryBlock, "merge")
+        LLVMMoveBasicBlockAfter(mergeBlock, entryBlock)
+
+        let elseBlock = LLVMInsertBasicBlockInContext(context, mergeBlock, "else")
+        let thenBlock = LLVMInsertBasicBlockInContext(context, elseBlock, "then")
+        let ifBlock =   LLVMInsertBasicBlockInContext(context, thenBlock, "if")
+    }
+}
+```
+
+So what's happening here?  
+First of all we have a new function `LLVMInsertBasicBlockInContext`. This function creates a new basic block and places it *before* another given basic block. Again, the last parameter is a label for the block.  
+So let's say we're in the middle of generating the IR for some program that contains an if-else expression. We don't care what comes before or after that if-else expression, so for our purposes the block structure of the program looks like this:
+
+```plaintext
+------------------------
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+|----------------------|
+|      entry block     | < position of our IR builder
+|----------------------|
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+------------------------
+```
+
+After our first call to `LLVMInsertBasicBlockInContext` it looks like this:
+
+```plaintext
+------------------------
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+|----------------------|
+|      merge block     |
+|----------------------|
+|      entry block     | < position of our IR builder
+|----------------------|
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+------------------------
+```
+
+Since we want to generate our if-else expression *after* the current position of our IR builder though, we need to move the `entryBlock` using `LLVMMoveBasicBlockAfter`. This function moves a given block after another given block, so in our case we achieve this:
+
+```plaintext
+------------------------
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+|----------------------|
+|      entry block     | < position of our IR builder
+|----------------------|
+|      merge block     |
+|----------------------|
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+------------------------
+```
+
+Next we insert the remaining basic blocks, so we end up with:
+
+```plaintext
+------------------------
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+|----------------------|
+|      entry block     | < position of our IR builder
+|----------------------|
+|         if block     |
+|----------------------|
+|       then block     |
+|----------------------|
+|       else block     |
+|----------------------|
+|      merge block     |
+|----------------------|
+|          ...         |
+| unknown basic blocks |
+|          ...         |
+------------------------
+```
+
+Since `LLVMInsertBasicBlockInContext` inserts a block *before* another block, we basically had to do the whole process in reverse order.
+
+So now that we have our blocks, let's start filling them with some instructions.   
+First off we need to make sure that execution flows from the `entryBlock` into the `ifBlock`. Recall from the documentation on basic blocks that *"[t]erminator instructions may not occur in the middle of basic blocks, and must terminate the blocks."* Terminator instructions are instructions like *return*, *branch* or *switch*. So for our purposes, we will use a branch instruction to move from the `entryBlock` into the `ifBlock`:
+
+```swift
+extension IRGenerator {
+
+    private func generateIfElseExpression /* ... */ {
+
+        // ...
+
+        LLVMBuildBr(builder, ifBlock)
+    }
+}
+```
+
+> *Note*:  
+We could avoid the `ifBlock` entirely by placing its contents in the `entryBlock`. But for the purpose of clarity, I have decided to give it its own block.
+
+Next we'll fill the `ifBlock` with a branch instruction whose destination depends on the value of the given `condition` expression:
+
+```swift
+extension IRGenerator {
+
+    private func generateIfElseExpression /* ... */ {
+
+        // ...
+
+        LLVMPositionBuilderAtEnd(builder, ifBlock)
+
+        let condition = try generateExpression(condition)
+        let floatForFalse = LLVMConstReal(floatType, Double(LLVMBool(false)))
+        let ifHeader = LLVMBuildFCmp(builder, LLVMRealONE, condition, floatForFalse, "condition")
+
+        LLVMBuildCondBr(builder, ifHeader, thenBlock, elseBlock)
+    }
+}
+```
+
+As you can see, we first need to move the insertion position of our instruction builder to the `ifBlock` using `LLVMPositionBuilderAtEnd`. Then we create a `comparison` instruction that will be used to determine the destination of the branch. Lastly we build the actual conditional branch instruction using `LLVMBuildCondBr` with the `thenBlock` and `elseBlock` as our destinations, depending on the value of `comparison`.  
+**The construction of the comparison...**
+
+
+
+
+
+
+
 
 ---
 
