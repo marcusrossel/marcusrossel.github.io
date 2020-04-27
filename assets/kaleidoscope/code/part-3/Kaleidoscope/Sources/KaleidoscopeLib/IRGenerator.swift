@@ -1,12 +1,21 @@
 import CLLVM
 
+// MARK: - IR Generator
+
 public final class IRGenerator {
  
+    public enum Error: Swift.Error {
+        case unknownVariable(name: String)
+        case unknownFunction(name: String)
+        case invalidNumberOfArguments(Int, expected: Int, functionName: String)
+    }
+    
     public private(set) var ast: Program
     public private(set) var module: LLVMModuleRef
     private let context: LLVMContextRef
     private let builder: LLVMBuilderRef
     private let floatType: LLVMTypeRef
+    private var symbolTable: [String: LLVMValueRef] = [:]
     
     public init(ast: Program) {
         self.ast = ast
@@ -90,7 +99,33 @@ extension IRGenerator {
         return phiNode
     }
     
-    func generateExpression(_ e: Expression) throws -> LLVMValueRef {
+    private func generateVariableExpression(name: String) throws -> LLVMValueRef {
+        guard let value = symbolTable[name] else { throw Error.unknownVariable(name: name) }
+        return value
+    }
+    
+    private func generateCallExpression(
+        functionName: String, arguments: [Expression]
+    ) throws -> LLVMValueRef {
+        guard let function = LLVMGetNamedFunction(module, functionName) else {
+            throw Error.unknownFunction(name: functionName)
+        }
+        
+        let parameterCount = LLVMCountParams(function)
+        guard parameterCount == arguments.count else {
+            throw Error.invalidNumberOfArguments(
+                Int(parameterCount),
+                expected: arguments.count,
+                functionName: functionName
+            )
+        }
+        
+        var arguments: [LLVMValueRef?] = try arguments.map(generateExpression(_:))
+        
+        return LLVMBuildCall(builder, function, &arguments, parameterCount, functionName)
+    }
+    
+    func generateExpression(_ expression: Expression) throws -> LLVMValueRef {
         
     }
     

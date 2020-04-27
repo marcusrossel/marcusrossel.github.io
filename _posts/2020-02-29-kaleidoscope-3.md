@@ -580,7 +580,84 @@ The phi node itself is created by calling `LLVMBuildPhi`. Capturing the returned
 Lastly we need to tell the phi node which value to return in which case. `LLVMAddIncoming` allows us to specify the `phiValues` that should be returned depending on which of the `phiBlocks` was the last exited basic block. We also have to pass the number of options in the last parameter, because I guess phi nodes support more than just two options (e.g. if we wanted to create an if-elseif-else expression).  
 The final thing for us to do is to actually return a value from this function, which is supposed to be whichever value is the result of the if-else expression, so exactly the value of the phi node.
 
+#### Variable Expressions
+
+Although the generation of the expressions above may have become a bit complex, it had one simplifying characteristic: all of it could be done using purely *local* information. I.e. generating IR for numbers, binary expressions and if-else expressions could be performed without any information about the program except for the respective AST-node.  
+As you may have guessed, this is not the case for variable expressions. In fact, the whole point of variable expressions is to use information gathered from *other parts* of a program. So the first step to generating their IR is to create some sort of record that associates variables' *names* with the *values* they represent:
+
+```swift
+public final class IRGenerator {
+
+    // ...
+
+    private var symbolTable: [String: LLVMValueRef] = [:]
+
+    // ...
+}
+```
+
+We call this record a *symbol table*.  
+If we used the C++ LLVM library, there'd be a predefined [`ValueSymbolTable`](https://llvm.org/doxygen/classllvm_1_1ValueSymbolTable.html#details) type we could use. But the C-bindings don't seem to have an analogue to this, so we'll just use a plain old Swift dictionary instead.  
+Now the generator method for variable expressions won't actually put anything
+*into* the symbol table - it will only *read* from it:
+
+```swift
+extension IRGenerator {
+
+    private func generateVariableExpression(name: String) throws -> LLVMValueRef {
+        guard let value = symbolTable[name] else { throw Error.unknownVariable(name: name) }
+        return value
+    }
+}
+```
+
+And as you can see, it's very simple. If can get the value corresponding to a variable name, we return it - if we can't find it, we throw an error. The error type is just a new enum:
+
+```swift
+public final class IRGenerator {
+
+    public enum Error: Swift.Error {
+        case unknownVariable(name: String)
+    }
+
+    // ...
+}
+```
+
+What this simple implementation of `generateVariableExpression(name:)` enforces is that you have to define variable *before* you use them.  
+So why haven't we already enforced this rule during parsing - isn't that kind of the parsers job?  
+If you think back to part 2 of this series, you might remember that when testing our parser we accepted some scenarios which we knew to be incorrect for a *Kaleidoscope* program:
+
+> We know that we don’t want to accept them, but they’re not of our parser’s concern.
+In fact we haven’t even captured a specification for them in our grammar! That’s because these issue require what is called a *context sensitive* grammar to describe them properly. BNF-notation only allows us to specify *context free* languages, and hence our parser also recognizes a context free language. [↗](https://marcusrossel.github.io/2020-01-19/kaleidoscope-2)
+
+This new rule we've defined, that variables must be defined before use, is a context sensitive rule (as the name nicely implies). I.e. we couldn't have encoded it in BNF-notation and therefore we couldn't have encoded it in our parser. Larger compilers introduce an own stage for enforcing these kinds of rules, called [*semantic analysis*](https://en.wikipedia.org/wiki/Semantic_analysis_(compilers)). But for our purposes it is enough to integrate them into our IR generation methods. And we'll run into some more in just a moment when implementing our last expression generator method.
+
 #### Call Expressions
+
+In order to build a call expression, we'll use `LLVMBuildCall` which requires a value representing a function as well as its arguments. So first of all we're going to get a handle on the function to be called:
+
+```swift
+extension IRGenerator {
+
+    private func generateCallExpression(
+        functionName: String, arguments: [Expression]
+    ) throws -> LLVMValueRef {
+        guard let function = LLVMGetNamedFunction(module, functionName) else {
+            throw Error.unknownFunction(name: functionName)
+        }
+
+        // ...
+    }
+}
+```
+
+`LLVMGetNamedFunction` *"[o]btain[s] a `Function` value from a `Module` by its name." [↗](https://llvm.org/doxygen/group__LLVMCCoreModule.html#gac230af72a200c4fce34d0b53134569cd)*  
+And similarly to how we've only *read* from the `symbolTable` so far, we'll only *get* functions for now and concern ourselves later with *setting* them.
+
+
+# TBC ...
+
 
 ---
 
