@@ -8,6 +8,7 @@ public final class IRGenerator {
         case unknownVariable(name: String)
         case unknownFunction(name: String)
         case invalidNumberOfArguments(Int, expected: Int, functionName: String)
+        case invalidRedeclarationOfFunction(String)
     }
     
     public private(set) var ast: Program
@@ -26,7 +27,30 @@ public final class IRGenerator {
     }
 }
 
-// MARK: - Expression Parsing Methods
+// MARK: - Function Generator Methods
+
+extension IRGenerator {
+    
+    @discardableResult
+    private func generate(prototype: Prototype) throws -> LLVMValueRef {
+        guard LLVMGetNamedFunction(module, prototype.name) == nil else {
+            throw Error.invalidRedeclarationOfFunction(prototype.name)
+        }
+        
+        var parameters = [LLVMTypeRef?](repeating: floatType, count: prototype.parameters.count)
+        
+        let signature = LLVMFunctionType(
+            floatType,
+            &parameters,
+            UInt32(prototype.parameters.count),
+            LLVMBool(false)
+        )
+        
+        return LLVMAddFunction(module, prototype.name, signature)
+    }
+}
+
+// MARK: - Expression Generator Methods
 
 extension IRGenerator {
     
@@ -37,8 +61,8 @@ extension IRGenerator {
     private func generateBinaryExpression(
         lhs: Expression, operator: Operator, rhs: Expression
     ) throws -> LLVMValueRef {
-        let lhs = try generateExpression(lhs)
-        let rhs = try generateExpression(rhs)
+        let lhs = try generate(expression: lhs)
+        let rhs = try generate(expression: rhs)
         
         switch `operator` {
         case .plus:   return LLVMBuildFAdd(builder, lhs, rhs, "sum")
@@ -72,7 +96,7 @@ extension IRGenerator {
         let condition = LLVMBuildFCmp(
             /* builder:   */ builder,
             /* predicate: */ LLVMRealONE,
-            /* lhs:       */ try generateExpression(condition),
+            /* lhs:       */ try generate(expression: condition),
             /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
             /* label:     */ "condition"
         )
@@ -92,7 +116,7 @@ extension IRGenerator {
         LLVMPositionBuilderAtEnd(builder, mergeBlock)
         
         let phiNode = LLVMBuildPhi(builder, floatType, "result")!
-        var phiValues: [LLVMValueRef?] = [try generateExpression(then), try generateExpression(`else`)]
+        var phiValues: [LLVMValueRef?] = [try generate(expression: then), try generate(expression: `else`)]
         var phiBlocks = [thenBlock, elseBlock]
         LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)
         
@@ -112,21 +136,33 @@ extension IRGenerator {
         }
         
         let parameterCount = LLVMCountParams(function)
+        
         guard parameterCount == arguments.count else {
             throw Error.invalidNumberOfArguments(
-                Int(parameterCount),
-                expected: arguments.count,
+                arguments.count,
+                expected: Int(parameterCount),
                 functionName: functionName
             )
         }
         
-        var arguments: [LLVMValueRef?] = try arguments.map(generateExpression(_:))
+        var arguments: [LLVMValueRef?] = try arguments.map(generate(expression:))
         
         return LLVMBuildCall(builder, function, &arguments, parameterCount, functionName)
     }
     
-    func generateExpression(_ expression: Expression) throws -> LLVMValueRef {
-        
+    private func generate(expression: Expression) throws -> LLVMValueRef {
+        switch expression {
+        case let .number(number):
+            return generateNumberExpression(number)
+        case let .binary(lhs: lhs, operator: `operator`, rhs: rhs):
+            return try generateBinaryExpression(lhs: lhs, operator: `operator`, rhs: rhs)
+        case let .if(condition: condition, then: then, else: `else`):
+            return try generateIfElseExpression(condition: condition, then: then, else: `else`)
+        case let .variable(name):
+            return try generateVariableExpression(name: name)
+        case let .call(functionName, arguments: arguments):
+            return try generateCallExpression(functionName: functionName, arguments: arguments)
+        }
     }
     
 }

@@ -337,8 +337,8 @@ extension IRGenerator {
         lhs: Expression, operator: Operator, rhs: Expression
     ) throws -> LLVMValueRef {
 
-        let lhs = try generateExpression(lhs)
-        let rhs = try generateExpression(rhs)
+        let lhs = try generate(expression: lhs)
+        let rhs = try generate(expression: rhs)
 
         switch `operator` {
         case .plus:   return LLVMBuildFAdd(builder, lhs, rhs, "sum")
@@ -351,7 +351,7 @@ extension IRGenerator {
 }
 ```
 
-First we generate the IR for the left- and right-hand side expressions (`lhs` and `rhs`). We haven't implemented `generateExpression(_:)` yet, but as mentioned above, all of our generator methods will return `LLVMValueRef`s. So the values in `lhs` and `rhs` are IR-representations of the corresponding expressions.  
+First we generate the IR for the left- and right-hand side expressions (`lhs` and `rhs`). We haven't implemented `generate(expression:)` yet, but as mentioned above, all of our generator methods will return `LLVMValueRef`s. So the values in `lhs` and `rhs` are IR-representations of the corresponding expressions.  
 Next we create the IR-representations of the instructions corresponding to the given `operator`.
 
 > An instruction builder represents a point within a basic block and is the exclusive means of building instructions using the C interface. [↗](https://llvm.org/doxygen/group__LLVMCCoreInstructionBuilder.html#details)
@@ -523,7 +523,7 @@ extension IRGenerator {
         let condition = LLVMBuildFCmp(
             /* builder:   */ builder,
             /* predicate: */ LLVMRealONE,
-            /* lhs:       */ try generateExpression(condition),
+            /* lhs:       */ try generate(expression: condition),
             /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
             /* label:     */ "condition"
         )
@@ -553,7 +553,7 @@ extension IRGenerator {
 
         LLVMPositionBuilderAtEnd(builder, mergeBlock)
         let phiNode = LLVMBuildPhi(builder, floatType, "result")!
-        var phiValues: [LLVMValueRef?] = [try generateExpression(then), try generateExpression(`else`)]
+        var phiValues: [LLVMValueRef?] = [try generate(expression: then), try generate(expression: `else`)]
         var phiBlocks = [thenBlock, elseBlock]
         LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)
 
@@ -624,9 +624,9 @@ public final class IRGenerator {
 }
 ```
 
-What this simple implementation of `generateVariableExpression(name:)` enforces is that you have to define variable *before* you use them.  
+What this simple implementation of `generateVariableExpression(name:)` enforces is that you have to define variables *before* you use them.  
 So why haven't we already enforced this rule during parsing - isn't that kind of the parsers job?  
-If you think back to part 2 of this series, you might remember that when testing our parser we accepted some scenarios which we knew to be incorrect for a *Kaleidoscope* program:
+If you think back to part 2 of this series, you might remember that when testing our parser we accepted some test cases which we knew to be incorrect for a *Kaleidoscope* program:
 
 > We know that we don’t want to accept them, but they’re not of our parser’s concern.
 In fact we haven’t even captured a specification for them in our grammar! That’s because these issue require what is called a *context sensitive* grammar to describe them properly. BNF-notation only allows us to specify *context free* languages, and hence our parser also recognizes a context free language. [↗](https://marcusrossel.github.io/2020-01-19/kaleidoscope-2)
@@ -635,7 +635,7 @@ This new rule we've defined, that variables must be defined before use, is a con
 
 #### Call Expressions
 
-In order to build a call expression, we'll use `LLVMBuildCall` which requires a value representing a function as well as its arguments. So first of all we're going to get a handle on the function to be called:
+In order to build a call expression, we'll use `LLVMBuildCall` which requires a value representing a function as well as its arguments. So first of all we're going to get a reference to the function to be called:
 
 ```swift
 extension IRGenerator {
@@ -653,8 +653,120 @@ extension IRGenerator {
 ```
 
 `LLVMGetNamedFunction` *"[o]btain[s] a `Function` value from a `Module` by its name." [↗](https://llvm.org/doxygen/group__LLVMCCoreModule.html#gac230af72a200c4fce34d0b53134569cd)*  
-And similarly to how we've only *read* from the `symbolTable` so far, we'll only *get* functions for now and concern ourselves later with *setting* them.
+We'll see later that part of a modules functionality is to act as a container to which we can add function definitions - kind of like a symbol table. And similar to how we've previously only *read* from the `symbolTable`, we'll only *get* functions from the module for now and concern ourselves with *setting* them later.  
+So... we first try to get a function for a given name. If it is not yet defined, the *Kaleidoscope* program breaks another one of our context sensitive rules: functions must be declared before use. In this case we throw a (newly added) error.  
+Next we grab the function's number of parameters and make sure it matches the passed number of arguments - another context sensitive rule:
 
+```swift
+extension IRGenerator {
+
+    private func generateCallExpression /* ... */ {
+
+        // ...
+
+        let parameterCount = LLVMCountParams(function)
+
+        guard parameterCount == arguments.count else {
+            throw Error.invalidNumberOfArguments(
+                arguments.count,
+                expected: Int(parameterCount),
+                functionName: functionName
+            )
+        }
+    }
+}
+```
+
+If the argument and parameter counts match, we generate the IR for each of the arguments. Since arguments can be any kind of expression, we call `generate(expression:)` for this:
+
+```swift
+extension IRGenerator {
+
+    private func generateCallExpression /* ... */ {
+
+        // ...
+
+        var arguments: [LLVMValueRef?] = try arguments.map(generate(expression:))
+    }
+}
+```
+
+Since `generateCallExpression(functionName:arguments:)` is marked `throws`, we can just pass along any errors that might occur during the arguments' IR generation. The reason we explicitly define `arguments` as `[LLVMValueRef?]` is that the following call to `LLVMBuildCall` expects an `UnsafeMutablePointer<LLVMValueRef?>!` for this parameter:
+
+```swift
+extension IRGenerator {
+
+    private func generateCallExpression /* ... */ {
+
+        // ...
+
+        return LLVMBuildCall(builder, function, &arguments, parameterCount, functionName)
+    }
+}
+```
+
+#### Any Expression
+
+Cool, so now we've got a generator method for each kind of expression! Now all that's left to do is to define a wrapping `parseExpression(_:)` method, that calls the right generator method depending on the type of expression it receives:
+
+```swift
+extension IRGenerator {
+
+    private func generate(expression: Expression) throws -> LLVMValueRef {
+        switch expression {
+        case let .number(number):
+            return generateNumberExpression(number)
+        case let .binary(lhs: lhs, operator: `operator`, rhs: rhs):
+            return try generateBinaryExpression(lhs: lhs, operator: `operator`, rhs: rhs)
+        case let .if(condition: condition, then: then, else: `else`):
+            return try generateIfElseExpression(condition: condition, then: then, else: `else`)
+        case let .variable(name):
+            return try generateVariableExpression(name: name)
+        case let .call(functionName, arguments: arguments):
+            return try generateCallExpression(functionName: functionName, arguments: arguments)
+        }
+    }
+}
+```
+
+### Function Prototypes
+
+As mentioned above, part of a modules functionality is to act as a container to which we can add function definitions. We also have the option to just add a function declaration though, i.e. a prototype. And of course that's exactly what we want when we encounter a `Prototype` AST node. The process is relatively straight forward:
+
+```swift
+extension IRGenerator {
+
+    @discardableResult
+    private func generate(prototype: Prototype) -> LLVMValueRef {
+        guard LLVMGetNamedFunction(module, prototype.name) == nil else {
+            throw Error.invalidRedeclarationOfFunction(prototype.name)
+        }
+
+        var parameters = [LLVMTypeRef?](repeating: floatType, count: prototype.parameters.count)
+
+        let signature = LLVMFunctionType(
+            floatType,
+            &parameters,
+            UInt32(prototype.parameters.count),
+            LLVMBool(false)
+        )
+
+        return LLVMAddFunction(module, prototype.name, signature)
+    }
+}
+```
+
+First of all we mark the method `@discardableResult` because we *will* need the resulting `LLVMValueeRef` when generating the IR for function defitions, but we *won't* need it when generating IR for external function declrations.  
+The leading guard-statement just enforces the context sensitive rule, that functions can't be declared multiple times.  
+The `parameters` are just a list of `LLVMTypeRef`s which will be needed to define the function's type signature. Since the only type in *Kaleidoscope* is our previously defined `floatType`, the parameter type list of a function is just the `floatType` repeated as many times as there are parameters.  
+Now to the perhaps more interesting part of the method. Just like we used `LLVMFloatTypeInContext` to define the `floatType`, we use `LLVMFunctionType` to define a function type, i.e. it returns an `LLVMTypeRef`.
+
+> The function is defined as a tuple of a return Type, a list of parameter types, and whether the function is variadic. [↗](https://llvm.org/doxygen/group__LLVMCCoreTypeFunction.html#ga8b0c32e7322e5c6c1bf7eb95b0961707)
+
+So the way we're populating `signature` is that it defines a function that takes *n* numbers, returns a number and is not variadic (that's the `LLVMBool(false)`).  
+Using this (function type) signature, we can add a function *declaration* to our module using `LLVMAddFunction`. And in return we also receive and reference to that function.
+
+### Functions
 
 # TBC ...
 
