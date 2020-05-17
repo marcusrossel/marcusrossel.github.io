@@ -27,6 +27,12 @@ public final class IRGenerator {
     }
 }
 
+// MARK: - Program Structure
+
+extension IRGenerator {
+    
+}
+
 // MARK: - Function Generator Methods
 
 extension IRGenerator {
@@ -43,10 +49,25 @@ extension IRGenerator {
             floatType,
             &parameters,
             UInt32(prototype.parameters.count),
-            LLVMBool(false)
+            false
         )
         
         return LLVMAddFunction(module, prototype.name, signature)
+    }
+    
+    private func generate(function: Function) throws {
+        let prototype = try generate(prototype: function.head)
+        let entryBlock = LLVMAppendBasicBlockInContext(context, prototype, "entry")
+        
+        // Clears the symbol table so it can be used for *this* function's body.
+        symbolTable.removeAll()
+        
+        for (index, name) in function.head.parameters.enumerated() {
+            symbolTable[name] = LLVMGetParam(prototype, UInt32(index))
+        }
+        
+        LLVMPositionBuilderAtEnd(builder, entryBlock)
+        LLVMBuildRet(builder, try generate(expression: function.body))
     }
 }
 
@@ -164,5 +185,13 @@ extension IRGenerator {
             return try generateCallExpression(functionName: functionName, arguments: arguments)
         }
     }
+}
+
+// MARK: - Extensions
+
+extension LLVMBool: ExpressibleByBooleanLiteral {
     
+    public init(booleanLiteral value: BooleanLiteralType) {
+        self = value ? 1 : 0
+    }
 }

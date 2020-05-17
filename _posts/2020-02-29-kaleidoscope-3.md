@@ -731,7 +731,7 @@ extension IRGenerator {
 
 ### Function Prototypes
 
-As mentioned above, part of a modules functionality is to act as a container to which we can add function definitions. We also have the option to just add a function declaration though, i.e. a prototype. And of course that's exactly what we want when we encounter a `Prototype` AST node. The process is relatively straight forward:
+As mentioned above, part of a modules functionality is to act as a container to which we can add function definitions. We also have the option of just adding a function declaration though, i.e. a prototype. And of course that's exactly what we want when we encounter a `Prototype` AST node. Generating IR for a prototype is relatively straight forward:
 
 ```swift
 extension IRGenerator {
@@ -748,7 +748,7 @@ extension IRGenerator {
             floatType,
             &parameters,
             UInt32(prototype.parameters.count),
-            LLVMBool(false)
+            false
         )
 
         return LLVMAddFunction(module, prototype.name, signature)
@@ -756,17 +756,60 @@ extension IRGenerator {
 }
 ```
 
-First of all we mark the method `@discardableResult` because we *will* need the resulting `LLVMValueeRef` when generating the IR for function defitions, but we *won't* need it when generating IR for external function declrations.  
-The leading guard-statement just enforces the context sensitive rule, that functions can't be declared multiple times.  
-The `parameters` are just a list of `LLVMTypeRef`s which will be needed to define the function's type signature. Since the only type in *Kaleidoscope* is our previously defined `floatType`, the parameter type list of a function is just the `floatType` repeated as many times as there are parameters.  
-Now to the perhaps more interesting part of the method. Just like we used `LLVMFloatTypeInContext` to define the `floatType`, we use `LLVMFunctionType` to define a function type, i.e. it returns an `LLVMTypeRef`.
+First of all we mark the method `@discardableResult` because we *will* need the resulting `LLVMValueRef` when generating the IR for function definitions, but we *won't* need it when generating IR for external function declarations.  
+The leading guard-statement just enforces the (context sensitive) rule, that functions can't be declared multiple times.  
+The `parameters` are a list of `LLVMTypeRef`s which will be needed to define the function's type signature. Since the only type in *Kaleidoscope* is our previously defined `floatType`, the parameter type list of a function is just the `floatType` repeated as many times as there are parameters.  
+Now to the perhaps more interesting part of the method. Just as we used `LLVMFloatTypeInContext` to define the `floatType`, we use `LLVMFunctionType` to define a function type.
 
 > The function is defined as a tuple of a return Type, a list of parameter types, and whether the function is variadic. [↗](https://llvm.org/doxygen/group__LLVMCCoreTypeFunction.html#ga8b0c32e7322e5c6c1bf7eb95b0961707)
 
-So the way we're populating `signature` is that it defines a function that takes *n* numbers, returns a number and is not variadic (that's the `LLVMBool(false)`).  
-Using this (function type) signature, we can add a function *declaration* to our module using `LLVMAddFunction`. And in return we also receive and reference to that function.
+So the way we're populating `signature` is that it defines a function that returns a number, takes `prototype.parameters.count` numbers as parameters, and is not variadic (that's the `false`).  
+Using this (function type) signature, we can add a function *declaration* to our module using `LLVMAddFunction`. And in return we also receive a reference to that function.
+
+> *Side note:*  
+> The last argument to `LLVMFunctionType` is actually an `LLVMBool` which is a typealias for `Int32`. So I've added the following conformance:  
+> ```swift
+> extension LLVMBool: ExpressibleByBooleanLiteral {
+>
+>    public init(booleanLiteral value: BooleanLiteralType) {
+>        self = value ? 1 : 0
+>    }
+> }
+> ```
 
 ### Functions
+
+Our last remaining AST-node is the `Function` node. Its generator method will nicely bring together most of the tools we have used above to generate other nodes' IR:
+
+```swift
+extension IRGenerator {
+
+    private func generate(function: Function) throws {
+        let prototype = try generate(prototype: function.head)
+        let entryBlock = LLVMAppendBasicBlockInContext(context, prototype, "entry")
+
+        // Clears the symbol table so it can be used for *this* function's body.
+        symbolTable.removeAll()
+
+        for (index, name) in function.head.parameters.enumerated() {
+            symbolTable[name] = LLVMGetParam(prototype, UInt32(index))
+        }
+
+        LLVMPositionBuilderAtEnd(builder, entryBlock)
+        LLVMBuildRet(builder, try generate(expression: function.body))
+    }
+}
+```
+
+First of all, the method has no return value, as all we want to do is add the function to our module. And really we can just delegate that task to our `generate(prototype:)` method. We can then focus on adding the function's *body* onto that generated declaration.  
+So after adding the function prototype (`function.head`) to the module, we append a basic block to it. Since we know that the `prototype` has just been declared (otherwise `generate(prototype:)` would have thrown), we know that the appended block is its *entry* block.  
+Next we get to work with the symbol table again. Remember, the symbol table was just a container that maps between variable names and their values. Since the only variables we have in *Kaleidoscope* are function parameters, all of our variables are necessarily local to each function. Therefore we need to clear the symbol table before generating any function.  
+Populating the symbol table requires a little bit more thought. What we're doing is... For each of the function's parameters (`function.head.parameters.enumerated()`), get the `LLVMValueRef` (by calling `LLVMGetParam`) that will be used for that parameter's *argument*. Then associate that value with the parameter's name in the symbol table. Those `LLVMValueRef`s will be populated for us when calling `LLVMBuildCall`, where we have to provide the actual arguments. So basically what we're doing here is associating each parameter name with a *handle* to the argument-to-be.  
+The remainder of the generator method is more pleasant again. First we move the instruction builder to the newly created `entryBlock`. And then, since the only kinds of statements we have in *Kaleidoscope* are expressions, we build a single return statement, that returns whatever value the `function.body` evaluates to.
+
+## Program Structure
+
+Ok, so we've implemented IR generation for each of our AST-nodes. Now all that's left to do is to tie together.
 
 # TBC ...
 
