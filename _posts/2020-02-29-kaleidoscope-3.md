@@ -809,7 +809,49 @@ The remainder of the generator method is more pleasant again. First we move the 
 
 ## Program Structure
 
-Ok, so we've implemented IR generation for each of our AST-nodes. Now all that's left to do is to tie together.
+Ok, so we've implemented IR generation for each of our AST-nodes. Now all that's left to do is to place the generated IR in some encompassing structure.  
+This is the point where have to define what it *means* to define an expression in a *Kaleidoscope* program - i.e. what should happen with the value. We'll take a simple approach and just print out the value of any expression to *stdout* in the order they appear in. So e.g. the program ...
+
+```
+def double(x) 2 * x;
+def is_equal(x, y) if x - y then 0 else 1;
+
+double(3.5 + 2.5)
+if is_equal(double(1), 2) then 100 else 0
+```
+
+... should produce the output ...
+
+```
+12
+100
+```
+
+We can implement this behaviour in two small steps:
+1. We need to add some way of printing things to *stdout*. For this we'll manually add an external function declaration of `printf` to our module.
+2. We'll manually define a `main` function in which we sequentially call `printf` with the results of (the IR of) all of our parsed `Expression`s.
+
+### Adding `printf`
+
+The most comfortable way of adding an external function declaration to our module would be through our `generate(prototype:)` method. Unfortunately this method only works for functions that expect and return floating-point values. C's `printf` on the other hand is declared as `int printf(const char * format, ...);`, so we'll need to handcraft its type signature:
+
+```swift
+extension IRGenerator {
+
+    private func generatePrintf() -> LLVMValueRef {
+        var parameters: [LLVMTypeRef?] = [LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
+        let signature = LLVMFunctionType(LLVMInt32TypeInContext(context), &parameters, 1, true)
+
+        return LLVMAddFunction(module, "printf", signature)
+    }
+}
+```
+
+This method should be quite easily understood by now. The only odd part is the `LLVMPointerType` function - not only does it take the type it should point to as its first parameter, but it also expects some second parameter. Apparently this second parameter can be used to identify different address spaces. [LLVMSwift's implementation of `PointerType`](https://github.com/llvm-swift/LLVMSwift/blob/188bfbb56521fe28efe73bdc344185d135a64967/Sources/LLVM/PointerType.swift#L24) just sets this value to `0` by default, so I just copied that behaviour above.
+
+### Adding `main`
+
+
 
 # TBC ...
 

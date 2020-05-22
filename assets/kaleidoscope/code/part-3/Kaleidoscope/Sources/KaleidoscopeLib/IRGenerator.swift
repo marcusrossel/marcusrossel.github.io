@@ -31,6 +31,32 @@ public final class IRGenerator {
 
 extension IRGenerator {
     
+    private func generatePrintf() -> LLVMValueRef {
+        var parameters: [LLVMTypeRef?] = [LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
+        let signature = LLVMFunctionType(LLVMInt32TypeInContext(context), &parameters, 1, true)
+        
+        return LLVMAddFunction(module, "printf", signature)
+    }
+    
+    private func genrateMain() throws {
+        var parameters: [LLVMTypeRef?] = []
+        let signature = LLVMFunctionType(LLVMVoidType(), &parameters, 0, false)
+        
+        let main = LLVMAddFunction(module, "main", signature)
+        let entryBlock = LLVMAppendBasicBlock(main, "entry")
+        LLVMPositionBuilderAtEnd(builder, entryBlock)
+        
+        let formatString = LLVMBuildGlobalStringPtr(builder, "%f\n", "format")
+        let printf = generatePrintf()
+        
+        for expression in ast.expressions {
+            let value = try generate(expression: expression)
+            var arguments: [LLVMValueRef?] = [formatString, value]
+            LLVMBuildCall(builder, printf, &arguments, 2, "print")
+        }
+        
+        LLVMBuildRetVoid(builder)
+    }
 }
 
 // MARK: - Function Generator Methods
