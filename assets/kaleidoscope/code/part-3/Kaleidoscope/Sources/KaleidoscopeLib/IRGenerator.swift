@@ -27,9 +27,15 @@ public final class IRGenerator {
     }
 }
 
-// MARK: - Program Structure
+// MARK: - Program Generator Methods
 
 extension IRGenerator {
+    
+    public func generateProgram() throws {
+        try ast.externals.forEach { try generate(prototype: $0) }
+        try ast.functions.forEach { try generate(function:  $0) }
+        try generateMain()
+    }
     
     private func generatePrintf() -> LLVMValueRef {
         var parameters: [LLVMTypeRef?] = [LLVMPointerType(LLVMInt8TypeInContext(context), 0)]
@@ -38,20 +44,19 @@ extension IRGenerator {
         return LLVMAddFunction(module, "printf", signature)
     }
     
-    private func genrateMain() throws {
+    private func generateMain() throws {
         var parameters: [LLVMTypeRef?] = []
         let signature = LLVMFunctionType(LLVMVoidType(), &parameters, 0, false)
         
         let main = LLVMAddFunction(module, "main", signature)
-        let entryBlock = LLVMAppendBasicBlock(main, "entry")
+        let entryBlock = LLVMAppendBasicBlockInContext(context, main, "entry")
         LLVMPositionBuilderAtEnd(builder, entryBlock)
         
         let formatString = LLVMBuildGlobalStringPtr(builder, "%f\n", "format")
         let printf = generatePrintf()
         
         for expression in ast.expressions {
-            let value = try generate(expression: expression)
-            var arguments: [LLVMValueRef?] = [formatString, value]
+            var arguments: [LLVMValueRef?] = [formatString, try generate(expression: expression)]
             LLVMBuildCall(builder, printf, &arguments, 2, "print")
         }
         

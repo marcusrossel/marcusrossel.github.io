@@ -807,7 +807,7 @@ Next we get to work with the symbol table again. Remember, the symbol table was 
 Populating the symbol table requires a little bit more thought. What we're doing is... For each of the function's parameters (`function.head.parameters.enumerated()`), get the `LLVMValueRef` (by calling `LLVMGetParam`) that will be used for that parameter's *argument*. Then associate that value with the parameter's name in the symbol table. Those `LLVMValueRef`s will be populated for us when calling `LLVMBuildCall`, where we have to provide the actual arguments. So basically what we're doing here is associating each parameter name with a *handle* to the argument-to-be.  
 The remainder of the generator method is more pleasant again. First we move the instruction builder to the newly created `entryBlock`. And then, since the only kinds of statements we have in *Kaleidoscope* are expressions, we build a single return statement, that returns whatever value the `function.body` evaluates to.
 
-## Program Structure
+## Program Generation
 
 Ok, so we've implemented IR generation for each of our AST-nodes. Now all that's left to do is to place the generated IR in some encompassing structure.  
 This is the point where have to define what it *means* to define an expression in a *Kaleidoscope* program - i.e. what should happen with the value. We'll take a simple approach and just print out the value of any expression to *stdout* in the order they appear in. So e.g. the program ...
@@ -851,10 +851,79 @@ This method should be quite easily understood by now. The only odd part is the `
 
 ### Adding `main`
 
+The `generateMain` method will be similar to `generatePrintf`. We again need to handcraft a function and add it to the module. This time it should have the type `() -> ()` (in *Swift* syntax):
 
+```swift
+extension IRGenerator {
 
-# TBC ...
+    private func generateMain() throws {
+        var parameters: [LLVMTypeRef?] = []
+        let signature = LLVMFunctionType(LLVMVoidType(), &parameters, 0, false)
 
+        let main = LLVMAddFunction(module, "main", signature)
+
+        // ...
+    }
+}
+```
+
+While `printf` was declared externally, `main` will now be defined by us manually. For every `Expression` in the AST we will build a call to `printf` that prints the value of the expression using the format string `"%f\n"`.
+
+> *Side note:*  
+> If you're not familiar with C's `printf`, don't worry. For our use case, you
+> can pretend that it's a function whose first argument must be the constant
+> `"%f\n"` and second argument must be a floating-point value that will be
+> printed.
+
+Adding `main`'s body is analogue to the way we did it in `generate(function:)`:
+
+```swift
+extension IRGenerator {
+
+    private func generateMain() throws {
+        // ...
+
+        let entryBlock = LLVMAppendBasicBlockInContext(context, main, "entry")
+        LLVMPositionBuilderAtEnd(builder, entryBlock)
+
+        let formatString = LLVMBuildGlobalStringPtr(builder, "%f\n", "format")
+        let printf = generatePrintf()
+
+        for expression in ast.expressions {
+            var arguments: [LLVMValueRef?] = [formatString, try generate(expression: expression)]
+            LLVMBuildCall(builder, printf, &arguments, 2, "print")
+        }
+
+        LLVMBuildRetVoid(builder)
+    }
+}
+```
+
+The part of this method that might be unfamiliar is the creation of the `formatString`. All `LLVMBuildGlobalStringPtr` does for us is to create an `LLVMValueRef` from an `UnsafePointer<Int8>!`, i.e. a string - the last parameter is again a label for the value.  
+In the for-loop we build calls of the form `printf("%f\n", <expression-value>)`.
+
+### Whole-Program Generation
+
+Every method we've declared so far has been private. That's because all we want to expose to "the user" is a single method that generates the IR for the entire given AST:
+
+```swift
+extension IRGenerator {
+
+    public func generateProgram() throws {
+        try ast.externals.forEach { try generate(prototype: $0) }
+        try ast.functions.forEach { try generate(function:  $0) }
+        try generateMain()
+    }
+}
+```
+
+The way we've iplemented `generateProgram` has a couple of effects on the correctness of a *Kaleidoscope* program.  
+Firstly, we generate all external function declarations *before* we generate the functions defined within the program. Hence the functions defined within the program are treated as the duplicate if there is a name collision.
+Secondly, since `generateMain` defines a `printf` and a `main` function, these names are reserved and cannot be declared in a *Kaleidoscope* program (otherwise the IR-generation throws and error).
+
+# Running Our First *Kaleidoscope* Program
+
+If you're anything like me, you really want to try out the pipeline we've built now.
 
 ---
 
