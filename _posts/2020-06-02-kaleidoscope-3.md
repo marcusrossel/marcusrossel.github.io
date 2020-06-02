@@ -1,5 +1,5 @@
 ---
-title: "Implementing LLVM's Kaleidoscope in Swift - Part 3"
+title: "LLVM's Kaleidoscope in Swift - Part 3: IR Generator"
 ---
 
 Last post we implemented a parser that assembles the output of the lexer into a more meaningful abstract syntax tree, i.e. into expressions, function definitions and external declarations. In this post we're going to generate LLVM-IR from those AST-nodes.

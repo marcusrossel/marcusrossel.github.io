@@ -1,5 +1,5 @@
 ---
-title: "Implementing LLVM's Kaleidoscope in Swift - Part 2"
+title: "LLVM's Kaleidoscope in Swift - Part 2: Parser"
 ---
 
 Last post we implemented a lexer to turn plain text into meaningful tokens. This post will deal with the parser.
@@ -674,7 +674,7 @@ If you think back to the post about lexers we had a similar situation:
 
 The issues presented above are of the same flavor. We know that we don't want to accept them, but they're not of our parser's concern.  
 In fact we haven't even captured a specification for them in our grammar! That's because these issue require what is called a *context sensitive* grammar to describe them properly. BNF-notation only allows us to specify *context free* languages, and hence our parser also recognizes a context free language.  
-Implementing the context sensitive aspect of *Kaleidoscope* will be part of the next post. More specifically we will need to introduce semantic analysis as part of the IR-generator. 
+Implementing the context sensitive aspect of *Kaleidoscope* will be part of the next post. More specifically we will need to introduce semantic analysis as part of the IR-generator.
 
 Until then, thanks for reading!
 

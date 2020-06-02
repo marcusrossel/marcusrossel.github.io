@@ -1,5 +1,5 @@
 ---
-title: "Implementing LLVM's Kaleidoscope in Swift - Part 0"
+title: "LLVM's Kaleidoscope in Swift - Part 0: Prelude"
 ---
 
 When  deciding to write this story I was expecting to start by saying something along the lines of *"I know there are already many tutorials for writing Kaleidoscope in Swift, but here's another one."* - Turns out, there's not. The only one I could find was [this one](https://harlanhaskins.com/2017/01/08/building-a-compiler-with-swift-in-llvm-part-1-introduction-and-the-lexer.html) by [Harlan Haskins](http://twitter.com/harlanhaskins). And while Harlan's tutorial is definitely worth checking out, it sometimes glosses over details which I had to figure out by using other resources. What I therefore hope to do with this series of posts, is to create a unified resource for learning how to implement [LLVM](https://llvm.org)'s tutorial language _Kaleidoscope_. The goal of this series is of course not just to create a working compiler for Kaleidoscope, but to learn how compilers can be built _in general_ using the LLVM infrastructure.  

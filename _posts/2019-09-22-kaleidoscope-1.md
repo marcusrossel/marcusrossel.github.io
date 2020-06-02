@@ -1,5 +1,5 @@
 ---
-title: "Implementing LLVM's Kaleidoscope in Swift - Part 1"
+title: "LLVM's Kaleidoscope in Swift - Part 1: Lexer"
 ---
 
 As we saw in the last post, our compiler frontend will be split into a lexer, parser and IR generator. This post will deal with the lexer.
