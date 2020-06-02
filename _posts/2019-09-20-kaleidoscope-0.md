@@ -27,17 +27,19 @@ Writing compiler backends produces a different problem: there are many target ar
 ```terminal
 marcus@~: llc --version
 LLVM (http://llvm.org/):
-  LLVM version 8.0.1
+  LLVM version 10.0.0
   Optimized build.
-  Default target: x86_64-apple-darwin18.7.0
+  Default target: x86_64-apple-darwin19.5.0
   Host CPU: skylake
 
   Registered Targets:
     aarch64    - AArch64 (little endian)
+    aarch64_32 - AArch64 (little endian ILP32)
     aarch64_be - AArch64 (big endian)
     amdgcn     - AMD GCN GPUs
     arm        - ARM
     arm64      - ARM64 (little endian)
+    arm64_32   - ARM64 (little endian ILP32)
     armeb      - ARM (big endian)
     bpf        - BPF (host endian)
     bpfeb      - BPF (big endian)
@@ -55,6 +57,8 @@ LLVM (http://llvm.org/):
     ppc64      - PowerPC 64
     ppc64le    - PowerPC 64 LE
     r600       - AMD GPUs HD2XXX-HD6XXX
+    riscv32    - 32-bit RISC-V
+    riscv64    - 64-bit RISC-V
     sparc      - Sparc
     sparcel    - Sparc LE
     sparcv9    - Sparc V9
