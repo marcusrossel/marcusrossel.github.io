@@ -100,7 +100,7 @@ let package = Package(
     targets: [
         .systemLibrary(
             name: "CLLVM",
-            providers: [.brew(["llvm"])]
+            pkgConfig: "cllvm"
         ),
         .target(
             name: "KaleidoscopeLib",
@@ -118,9 +118,15 @@ let package = Package(
 )
 ```
 
-We declare a new target of type `.systemLibrary` and tell it how the library can be accessed - in my case through a Homebew install.
+We declare a new target of type `.systemLibrary` and tell it how the library can be accessed - in this case through *pkg-config*. The *SwiftLLVM* repository contains a [script](https://github.com/llvm-swift/LLVMSwift/blob/master/utils/make-pkgconfig.swift) that can be used to add LLVM to your *pkg-config*. You simply run it from any directory as:
 
-> If you didn't use Homebrew for installation you can e.g. also provide a *pkg-config* name via the `pkgConfig` parameter. The SwiftLLVM repository contains a [script](https://github.com/llvm-swift/LLVMSwift/blob/master/utils/make-pkgconfig.swift) that can be used to add LLVM to your pkg-config.  
+```
+marcus@~: swift make-pkgconfig.swift
+```
+
+If you ever update LLVM to a new version, don't forget to run this script again!
+
+> If you've used Homebrew for installation you can also provide the location of LLVM via the `providers` parameter. In my experience this doesn't work as consistently as using *pkg-config* though.
 
 Now despite our specification of this new target, declaring `import CLLVM` will still fail. This is because although we have declared the `CLLVM` *target* we need to define its corresponding *package* - so it needs a corresponding folder to live in:
 
@@ -159,34 +165,52 @@ module CLLVM [system] {
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitReader.h>
 #include <llvm-c/BitWriter.h>
-#include <llvm-c/Core.h>
 #include <llvm-c/Comdat.h>
+#include <llvm-c/Core.h>
+#include <llvm-c/DataTypes.h>
 #include <llvm-c/DebugInfo.h>
 #include <llvm-c/Disassembler.h>
+#include <llvm-c/DisassemblerTypes.h>
+#include <llvm-c/Error.h>
 #include <llvm-c/ErrorHandling.h>
 #include <llvm-c/ExecutionEngine.h>
-#include <llvm-c/Initialization.h>
+#include <llvm-c/ExternC.h>
 #include <llvm-c/IRReader.h>
-#include <llvm-c/Linker.h>
+#include <llvm-c/Initialization.h>
 #include <llvm-c/LinkTimeOptimizer.h>
-#include <llvm-c/lto.h>
+#include <llvm-c/Linker.h>
 #include <llvm-c/Object.h>
-#include <llvm-c/OptRemarks.h>
 #include <llvm-c/OrcBindings.h>
+#include <llvm-c/Remarks.h>
 #include <llvm-c/Support.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
+#include <llvm-c/Transforms/AggressiveInstCombine.h>
+#include <llvm-c/Transforms/Coroutines.h>
 #include <llvm-c/Transforms/IPO.h>
+#include <llvm-c/Transforms/InstCombine.h>
 #include <llvm-c/Transforms/PassManagerBuilder.h>
 #include <llvm-c/Transforms/Scalar.h>
 #include <llvm-c/Transforms/Utils.h>
 #include <llvm-c/Transforms/Vectorize.h>
 #include <llvm-c/Types.h>
+#include <llvm-c/lto.h>
 ```
 
-If you've completed all of the steps above, you should be able to open up `IRGenerator.swift`, type `import CLLVM` and compile successfully.  
+> Note:  
+> If you're using a different version of LLVM than used in this post (LLVM 10),
+this list might contain outdated headers. You can fix this manually by just checking which headers are present in your install of LLVM (in my case they live in `/usr/local/Cellar/llvm/10.0.0_3/include/llvm-c/`) and editing the includes above accordingly.
 
-> If you're using Xcode, try typing `LLVM` into the file. You should see a long list of suggested types and functions that all look very "unswifty".
+If you've completed all of the steps above, you should be able to open up `IRGenerator.swift`, type `import CLLVM` and compile successfully. If it doesn't work and you're using an IDE, try building directly from the command line:
+
+```terminal
+marcus@Kaleidoscope: swift build
+```
+
+This seems to be a much more reliable method of building this project than e.g. using Xcode.
+
+> Aside:  
+> As of writing this post, Xcode is giving me the error `'llvm-c/Analysis.h' file not found`, while `swift build` is working just fine ¯\_(ツ)_/¯.
 
 # Writing the IR-Generator
 
@@ -219,22 +243,24 @@ public final class IRGenerator {
 
     public private(set) var ast: Program
     public private(set) var module: LLVMModuleRef
+    private let context: LLVMContextRef
 
     public init(ast: Program) {
         self.ast = ast
-        module = LLVMModuleCreateWithName("kaleidoscope")
+        context = LLVMContextCreate()
+        module = LLVMModuleCreateWithNameInContext("kaleidoscope")
     }
 }
 ```
 
-As you can see, calling into the LLVM C-bindings is rather unergonomic. E.g. `LLVMModuleCreateWithName(_:)` actually takes an `UnsafePointer<Int8>!` as parameter. Luckily Swift can often bridge from "normal" types to these more unwieldy types when suitable. In the initializer above we just pass a string literal where an `UnsafePointer<Int8>!` is expected, and Swift transparently bridges it. Apple's documentation on [`UnsafePointer`](https://developer.apple.com/documentation/swift/unsafepointer) is actually quite a nice for picking up the basics of pointers in Swift - which we will be dealing with a lot when using the LLVM-C bindings.  
-So... to create the module we call `LLVMModuleCreateWithName(_:)` and pass it an arbitrary name (`"kaleidoscope"` seemed fitting).  
+As you can see, calling into the LLVM C-bindings is rather unergonomic. E.g. `LLVMModuleCreateWithNameInContext(_:)` actually takes an `UnsafePointer<Int8>!` and `LLVMContextRef!` as parameters. Luckily Swift can often bridge from "normal" types to these more unwieldy types when suitable. In the initializer above we just pass a string literal where an `UnsafePointer<Int8>!` is expected, and Swift transparently bridges it. Apple's documentation on [`UnsafePointer`](https://developer.apple.com/documentation/swift/unsafepointer) is actually quite a nice for picking up the basics of pointers in Swift - which we will be dealing with a lot when using the LLVM-C bindings.  
+So... to create the module we call `LLVMModuleCreateWithNameInContext(_:)` and pass it an arbitrary name (`"kaleidoscope"` seemed fitting) as well as some `context` that we've created before.  
 
-To obtain the aforementioned "representations" of program constructs, we will use LLVM's instruction builder `LLVMBuilderRef`.  
+Contexts will pop up across the entire implementation of the IR generator. E.g. to obtain the aforementioned "representations" of program constructs, we will use LLVM's instruction builder `LLVMBuilderRef`.  
 
 > [The instruction builder] is a helper object that makes it easy to generate LLVM instructions. Instances of [`LLVMBuilderRef`] keep track of the current place to insert instructions and has methods to create new instructions. [↗](http://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#code-generation-setup)
 
-The builder is created by calling `LLVMCreateBuilderInContext(_:)` which expects an `LLVMContextRef!`. What is an LLVM context though?  
+The builder is created by calling `LLVMCreateBuilderInContext(_:)` which also expects an `LLVMContextRef!`. What is an LLVM context though?  
 The documentation just says that...
 
 > [i]t (opaquely) owns and manages the core "global" data of LLVM's core infrastructure, including the type and constant uniquing tables. [↗](http://llvm.org/doxygen/classllvm_1_1LLVMContext.html#details)
@@ -247,21 +273,18 @@ I've seen quite a few source use `LLVMGetGlobalContext()` as a means of obtainin
 
 > `getGlobalContext()` has been removed a few years ago. You need to manage the lifetime of the context yourself. [↗](https://groups.google.com/forum/#!topic/llvm-dev/w4eSx2uM2Ig)
 
-So instead we will use `LLVMContextCreate()` and retain the resulting context in our IR-generator:
+So instead we've used `LLVMContextCreate()` above, and retained the resulting context in our IR-generator. Adding the instruction builder is then as simple as:
 
 ```swift
 public final class IRGenerator {
 
     // ...
 
-    private let context: LLVMContextRef
     private let builder: LLVMBuilderRef
 
     public init(ast: Program) {
-
         // ...
 
-        context = LLVMContextCreate()
         builder = LLVMCreateBuilderInContext(context)
     }
 }
@@ -316,7 +339,6 @@ public final class IRGenerator {
     private let floatType: LLVMTypeRef
 
     public init(ast: Program) {
-
         // ...
 
         floatType = LLVMFloatTypeInContext(context)
@@ -398,7 +420,6 @@ In my opinion the APIs for inserting and moving basic blocks around aren't quite
 extension IRGenerator {
 
     private func generateIfElseExpression /* ... */ {
-
         // ...
 
         let mergeBlock = LLVMInsertBasicBlockInContext(context, entryBlock, "merge")
@@ -498,7 +519,6 @@ First off we need to make sure that execution flows from the `entryBlock` into t
 extension IRGenerator {
 
     private func generateIfElseExpression /* ... */ {
-
         // ...
 
         LLVMBuildBr(builder, ifBlock)
@@ -515,7 +535,6 @@ Next we'll fill the `ifBlock` with a branch instruction whose destination depend
 extension IRGenerator {
 
     private func generateIfElseExpression /* ... */ {
-
         // ...
 
         LLVMPositionBuilderAtEnd(builder, ifBlock)
@@ -542,7 +561,6 @@ No to the remaining then-, else- and merge-blocks:
 extension IRGenerator {
 
     private func generateIfElseExpression /* ... */ {
-
         // ...
 
         LLVMPositionBuilderAtEnd(builder, thenBlock)
@@ -661,7 +679,6 @@ Next we grab the function's number of parameters and make sure it matches the pa
 extension IRGenerator {
 
     private func generateCallExpression /* ... */ {
-
         // ...
 
         let parameterCount = LLVMCountParams(function)
@@ -697,7 +714,6 @@ Since `generateCallExpression(functionName:arguments:)` is marked `throws`, we c
 extension IRGenerator {
 
     private func generateCallExpression /* ... */ {
-
         // ...
 
         return LLVMBuildCall(builder, function, &arguments, parameterCount, functionName)
@@ -788,22 +804,33 @@ extension IRGenerator {
         let prototype = try generate(prototype: function.head)
         let entryBlock = LLVMAppendBasicBlockInContext(context, prototype, "entry")
 
-        // Clears the symbol table so it can be used for *this* function's body.
-        symbolTable.removeAll()
-
         for (index, name) in function.head.parameters.enumerated() {
             symbolTable[name] = LLVMGetParam(prototype, UInt32(index))
         }
 
         LLVMPositionBuilderAtEnd(builder, entryBlock)
         LLVMBuildRet(builder, try generate(expression: function.body))
+
+        // Clears the symbol table so it can be used for *other* functions' bodies.
+        symbolTable.removeAll()
     }
 }
 ```
 
 First of all, the method has no return value, as all we want to do is add the function to our module. And really we can just delegate that task to our `generate(prototype:)` method. We can then focus on adding the function's *body* onto that generated declaration.  
 So after adding the function prototype (`function.head`) to the module, we append a basic block to it. Since we know that the `prototype` has just been declared (otherwise `generate(prototype:)` would have thrown), we know that the appended block is its *entry* block.  
-Next we get to work with the symbol table again. Remember, the symbol table was just a container that maps between variable names and their values. Since the only variables we have in *Kaleidoscope* are function parameters, all of our variables are necessarily local to each function. Therefore we need to clear the symbol table before generating any function.  
+Next we get to work with the symbol table again. Remember, the symbol table was just a container that maps between variable names and their values. Since the only variables we have in *Kaleidoscope* are function parameters, all of our variables are necessarily local to each function. Therefore we need to clear the symbol table after generating any function, and hence we also expect it to be empty before populating it.
+
+> *Note:*  
+> Clearing the symbol table right *before* populating it and leaving it "messy" until the next function is generated can cause problems. It would allow standalone expressions to use variable names defined in the last generated function:
+> ```  
+> // Populates the symbol table with `x` and `y`.
+> def my_func(x, y) x + y;
+>
+> // This does not throw an error, because `x` is still in the symbol table.
+> x
+> ```
+
 Populating the symbol table requires a little bit more thought. What we're doing is... For each of the function's parameters (`function.head.parameters.enumerated()`), get the `LLVMValueRef` (by calling `LLVMGetParam`) that will be used for that parameter's *argument*. Then associate that value with the parameter's name in the symbol table. Those `LLVMValueRef`s will be populated for us when calling `LLVMBuildCall`, where we have to provide the actual arguments. So basically what we're doing here is associating each parameter name with a *handle* to the argument-to-be.  
 The remainder of the generator method is more pleasant again. First we move the instruction builder to the newly created `entryBlock`. And then, since the only kinds of statements we have in *Kaleidoscope* are expressions, we build a single return statement, that returns whatever value the `function.body` evaluates to.
 
@@ -858,7 +885,7 @@ extension IRGenerator {
 
     private func generateMain() throws {
         var parameters: [LLVMTypeRef?] = []
-        let signature = LLVMFunctionType(LLVMVoidType(), &parameters, 0, false)
+        let signature = LLVMFunctionType(LLVMVoidTypeInContext(context), &parameters, 0, false)
 
         let main = LLVMAddFunction(module, "main", signature)
 
@@ -923,9 +950,131 @@ Secondly, since `generateMain` defines a `printf` and a `main` function, these n
 
 # Running Our First *Kaleidoscope* Program
 
-If you're anything like me, you really want to try out the pipeline we've built now.
+If you're anything like me, you really want to try out the pipeline we've built now. So far we're only able to generate *LLVM-IR* though.  
+Luckily there's [`lli`](https://llvm.org/docs/CommandGuide/lli.html) which we can use to execute LLVM-IR. If you've installed LLVM in some capacity, you should be able to access it directly from the command line:
 
----
+```terminal
+marcus@~: lli example.ll
+```
+
+> *Note:*  
+> The extension `ll` seems to somewhat of a standard for LLVM-IR files. The given extension doesn't *actually* matter of course. And if you *really* care, there's some more [nuance](https://stackoverflow.com/q/19453440/3208492) to it.
+
+## Ad Hoc IR Generation
+
+To actually *get* the IR generated by the IR generator, we first of all need to be able to execute our compiler pipeline. So for the first time we get to use our `main.swift`. This implementation is only supposed to reassure us that our compiler pipeline actually runs, so it's just going to be temporary.
+
+First and foremost we're going to import all of the parts we need for the compiler pipeline:
+
+```swift
+import KaleidoscopeLib
+import CLLVM
+```
+
+Since this is only an ad-hoc solution, we're going define a sample program in-line:
+
+```swift
+// ...
+
+let program = """
+def double(x) 2 * x;
+def is_equal(x, y) if x - y then 0 else 1;
+
+double(3.5 + 2.5)
+if is_equal(double(1), 2) then 100 else 0
+"""
+```
+
+Since we'd like to catch any errors, we'll place all of the steps of the compilation process in a do-catch structure:
+
+```swift
+// ...
+
+do {
+    let lexer = Lexer(text: program)
+    let parser = Parser(tokens: lexer)
+    let ast = try parser.parseProgram()
+    let irGenerator = IRGenerator(ast: ast)
+    try irGenerator.generateProgram()
+    LLVMDumpModule(irGenerator.module)
+} catch {
+    print(error)
+}
+```
+
+So where does the IR actually end up now?
+Well, after calling `irGenerator.generateProgram()` it's still stuck in the `LLVMModuleRef` inside of the `irGenerator`. To "get it out" we call `LLVMDumpModule`, which will print the IR to *stderr*:
+
+```
+; ModuleID = 'kaleidoscope'
+source_filename = "kaleidoscope"
+
+@format = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
+
+define float @double(float %0) {
+entry:
+  %product = fmul float 2.000000e+00, %0
+  ret float %product
+}
+
+define float @is_equal(float %0, float %1) {
+entry:
+  br label %if
+
+if:                                               ; preds = %entry
+  %difference = fsub float %0, %1
+  %condition = fcmp one float %difference, 0.000000e+00
+  br i1 %condition, label %then, label %else
+
+then:                                             ; preds = %if
+  br label %merge
+
+else:                                             ; preds = %if
+  br label %merge
+
+merge:                                            ; preds = %else, %then
+  %result = phi float [ 0.000000e+00, %then ], [ 1.000000e+00, %else ]
+  ret float %result
+}
+
+define void @main() {
+entry:
+  %double = call float @double(float 6.000000e+00)
+  %print = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), float %double)
+  br label %if
+
+if:                                               ; preds = %entry
+  %double1 = call float @double(float 1.000000e+00)
+  %is_equal = call float @is_equal(float %double1, float 2.000000e+00)
+  %condition = fcmp one float %is_equal, 0.000000e+00
+  br i1 %condition, label %then, label %else
+
+then:                                             ; preds = %if
+  br label %merge
+
+else:                                             ; preds = %if
+  br label %merge
+
+merge:                                            ; preds = %else, %then
+  %result = phi float [ 1.000000e+02, %then ], [ 0.000000e+00, %else ]
+  %print2 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), float %result)
+  ret void
+}
+
+declare i32 @printf(i8* %0, ...)
+```
+
+To run this program, just copy and paste the IR into some file and run `lli` on it as shown above.
+
+## Next Steps
+
+I find reading through the generated IR quite satisfying. Most of it corresponds directly to the structure we've implemented in our IR generator.
+
+There is one big caveat to our IR though - it might be incorrect. And I don't just mean that it doesn't exactly resemble the semantics of the underlying (or overlying?) *Kaleidoscope* program. The generated IR might not even be valid IR. If you have amazing memory, you might recall from the start of this post that:
+
+> The LLVM infrastructure provides a **verification pass** that may be used to verify that an LLVM module is well formed.
+
+That is, we can use the function builder to build IR that is invalid. So at some point we have to run a verifier that makes sure that our IR is valid. Luckily LLVM provides a verifier that we can just use as is. But module verification and generation of executables will all be covered in thee next part of this series.
 
 Until then, thanks for reading!
 

@@ -17,7 +17,7 @@ let package = Package(
     targets: [
         .systemLibrary(
             name: "CLLVM",
-            providers: [.brew(["llvm"])]
+            pkgConfig: "cllvm"
         ),
         .target(
             name: "KaleidoscopeLib",

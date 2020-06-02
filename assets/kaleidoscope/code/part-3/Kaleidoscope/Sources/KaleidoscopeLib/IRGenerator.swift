@@ -20,8 +20,8 @@ public final class IRGenerator {
     
     public init(ast: Program) {
         self.ast = ast
-        module = LLVMModuleCreateWithName("kaleidoscope")
         context = LLVMContextCreate()
+        module = LLVMModuleCreateWithNameInContext("kaleidoscope", context)
         builder = LLVMCreateBuilderInContext(context)
         floatType = LLVMFloatTypeInContext(context)
     }
@@ -46,7 +46,7 @@ extension IRGenerator {
     
     private func generateMain() throws {
         var parameters: [LLVMTypeRef?] = []
-        let signature = LLVMFunctionType(LLVMVoidType(), &parameters, 0, false)
+        let signature = LLVMFunctionType(LLVMVoidTypeInContext(context), &parameters, 0, false)
         
         let main = LLVMAddFunction(module, "main", signature)
         let entryBlock = LLVMAppendBasicBlockInContext(context, main, "entry")
@@ -75,7 +75,7 @@ extension IRGenerator {
         }
         
         var parameters = [LLVMTypeRef?](repeating: floatType, count: prototype.parameters.count)
-        
+                
         let signature = LLVMFunctionType(
             floatType,
             &parameters,
@@ -90,15 +90,15 @@ extension IRGenerator {
         let prototype = try generate(prototype: function.head)
         let entryBlock = LLVMAppendBasicBlockInContext(context, prototype, "entry")
         
-        // Clears the symbol table so it can be used for *this* function's body.
-        symbolTable.removeAll()
-        
         for (index, name) in function.head.parameters.enumerated() {
             symbolTable[name] = LLVMGetParam(prototype, UInt32(index))
         }
         
         LLVMPositionBuilderAtEnd(builder, entryBlock)
         LLVMBuildRet(builder, try generate(expression: function.body))
+        
+        // Clears the symbol table so it can be used for *other* functions' bodies.
+        symbolTable.removeAll()
     }
 }
 

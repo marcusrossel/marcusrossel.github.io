@@ -1,0 +1,12 @@
+; ModuleID = 'kaleidoscope'
+source_filename = "kaleidoscope"
+
+@format = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
+
+define void @main() {
+entry:
+  %print = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), float 3.000000e+00)
+  ret void
+}
+
+declare i32 @printf(i8* %0, ...)
