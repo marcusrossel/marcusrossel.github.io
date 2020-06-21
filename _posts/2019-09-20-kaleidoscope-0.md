@@ -72,7 +72,7 @@ LLVM (http://llvm.org/):
     xcore      - XCore
 ```
 
-What LLVM therefore aims to do, is to remove steps 2 and 3 from your compiler design process. Neither do you need to be able to write an optimizer, nor a backend targeting 33 different architectures. LLVM just does that for you:
+What LLVM therefore aims to do, is to remove steps 2 and 3 from your compiler design process. Neither do you need to be able to write an optimizer, nor a backend targeting over 30 different architectures. LLVM just does that for you:
 
 ![LLVM Compiler Pipeline](http://www.aosabook.org/images/llvm/LLVMCompiler1.png)
 

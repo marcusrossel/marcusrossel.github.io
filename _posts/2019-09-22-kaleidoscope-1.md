@@ -6,6 +6,8 @@ As we saw in the last post, our compiler frontend will be split into a lexer, pa
 
 ---
 
+<br/>
+
 The lexer is the part of the compiler that deals with the raw source code of the target language. It moves along the source text, character by character, grouping those characters into meaningful units called _lexemes_ or _tokens_.  
 We humans do this rather intuitively. Consider this example:
 

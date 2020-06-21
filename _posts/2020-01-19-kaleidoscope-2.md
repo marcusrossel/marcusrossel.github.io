@@ -6,6 +6,8 @@ Last post we implemented a lexer to turn plain text into meaningful tokens. This
 
 ---
 
+<br/>
+
 The job of the parser is similar to that of a lexer. The lexer grouped plain text characters into more abstract bundles called *tokens*. We performed this grouping process in order to extract more explicit information about the plain text, which would otherwise be somewhat hidden within it. When parsing a stream of tokens, we have an analogous goal - we're trying to bundle together groups of tokens into what is called an *abstract syntax tree (AST)*. This process of grouping together tokens will again entail a more explicit representation of certain information that would otherwise be somewhat hidden in the stream of tokens.
 
 Anyone who's programmed before (which I assume you have), has parsed code in their mind. To most programmers the line:

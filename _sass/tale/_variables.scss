@@ -62,7 +62,7 @@ html[data-theme="dark"] {
 // Fonts
 $serif-primary: 'Libre Baskerville', 'Times New Roman', Times, serif;
 $serif-secondary: Palatino, 'Palatino LT STD', 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
-$sans-serif: 'Helvetica Neue', 'Segoe UI', Helvetica, Arial, sans-serif;
+$sans-serif: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, Verdana, sans-serif;
 $monospaced: Menlo, Monaco, monospace;
 
 @mixin box-sizing($type: border-box) {

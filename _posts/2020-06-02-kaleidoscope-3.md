@@ -7,7 +7,11 @@ Last post we implemented a parser that assembles the output of the lexer into a 
 > *Important note:*  
 Although I have been able to work through implementing an IR-generator for *Kaleidoscope*, I am by no means an expert on this topic. Hence this post will rely *heavily* on external sources, as manifest in the quote-fest below.
 
+<br/>
+
 ---
+
+<br/>
 
 Considering that this series of posts is called *"Implementing **LLVM**'s Kaleidoscope in Swift"* you might have noticed a distinct lack of LLVM-ness so far. That's because so far we've been busy turning *Kaleidoscope*-code into some representation that *we* understand - i.e. our AST. The job of LLVM is to turn a code-representation that *it* understands into an executable program. In consequence, we have to convert our AST-representation into LLVM's *"intermediate representation" (IR)*. For that purpose we'll create an *"IR-Generator"*.
 
@@ -29,7 +33,7 @@ The first basic block in a function is special in two ways: it is immediately ex
 If you don't understand all of these concepts right now, don't worry. Translating our AST into LLVM-IR will make them much more understandable.  
 Also, if you happen to reference any of the material above, you might see code like this:
 
-```llvm
+```
 ; Declare the string constant as a global constant.
 @.str = private unnamed_addr constant [13 x i8] c"hello world\0A\00"
 
