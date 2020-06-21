@@ -15,13 +15,6 @@ do {
     let ast = try parser.parseProgram()
     let irGenerator = IRGenerator(ast: ast)
     try irGenerator.generateProgram()
-    
-    var verificationError: UnsafeMutablePointer<Int8>?
-    let errorStatus = LLVMVerifyModule(irGenerator.module, LLVMReturnStatusAction, &verificationError)
-    if let message = verificationError, errorStatus == LLVMBool(true) {
-        print(String(cString: message))
-    }
-    
     LLVMDumpModule(irGenerator.module)
 } catch {
     print(error)

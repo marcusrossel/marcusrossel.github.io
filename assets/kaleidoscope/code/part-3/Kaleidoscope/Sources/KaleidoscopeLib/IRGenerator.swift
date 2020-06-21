@@ -15,7 +15,7 @@ public final class IRGenerator {
     public private(set) var module: LLVMModuleRef
     private let context: LLVMContextRef
     private let builder: LLVMBuilderRef
-    private let floatType: LLVMTypeRef
+    private let doubleType: LLVMTypeRef
     private var symbolTable: [String: LLVMValueRef] = [:]
     
     public init(ast: Program) {
@@ -23,7 +23,7 @@ public final class IRGenerator {
         context = LLVMContextCreate()
         module = LLVMModuleCreateWithNameInContext("kaleidoscope", context)
         builder = LLVMCreateBuilderInContext(context)
-        floatType = LLVMFloatTypeInContext(context)
+        doubleType = LLVMDoubleTypeInContext(context)
     }
 }
 
@@ -74,16 +74,25 @@ extension IRGenerator {
             throw Error.invalidRedeclarationOfFunction(prototype.name)
         }
         
-        var parameters = [LLVMTypeRef?](repeating: floatType, count: prototype.parameters.count)
+        var parameters = [LLVMTypeRef?](repeating: doubleType, count: prototype.parameters.count)
                 
         let signature = LLVMFunctionType(
-            floatType,
+            doubleType,
             &parameters,
             UInt32(prototype.parameters.count),
             false
         )
         
-        return LLVMAddFunction(module, prototype.name, signature)
+        let function = LLVMAddFunction(module, prototype.name, signature)!
+        
+        // Adds a name to each parameter, so that the IR shows their names for them instead of just
+        // `%0`, `%1`, etc.
+        for (index, name) in prototype.parameters.enumerated() {
+            let parameterValue = LLVMGetParam(function, UInt32(index))
+            LLVMSetValueName2(parameterValue, name, name.count)
+        }
+        
+        return function
     }
     
     private func generate(function: Function) throws {
@@ -107,7 +116,7 @@ extension IRGenerator {
 extension IRGenerator {
     
     private func generateNumberExpression(_ number: Double) -> LLVMValueRef {
-        return LLVMConstReal(floatType, number)
+        return LLVMConstReal(doubleType, number)
     }
     
     private func generateBinaryExpression(
@@ -149,7 +158,7 @@ extension IRGenerator {
             /* builder:   */ builder,
             /* predicate: */ LLVMRealONE,
             /* lhs:       */ try generate(expression: condition),
-            /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
+            /* rhs:       */ LLVMConstReal(doubleType, 0) /* = false */,
             /* label:     */ "condition"
         )
         
@@ -167,7 +176,7 @@ extension IRGenerator {
         
         LLVMPositionBuilderAtEnd(builder, mergeBlock)
         
-        let phiNode = LLVMBuildPhi(builder, floatType, "result")!
+        let phiNode = LLVMBuildPhi(builder, doubleType, "result")!
         var phiValues: [LLVMValueRef?] = [try generate(expression: then), try generate(expression: `else`)]
         var phiBlocks = [thenBlock, elseBlock]
         LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)

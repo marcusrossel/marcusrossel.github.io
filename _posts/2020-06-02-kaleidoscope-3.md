@@ -210,11 +210,11 @@ marcus@Kaleidoscope: swift build
 This seems to be a much more reliable method of building this project than e.g. using Xcode.
 
 > Aside:  
-> As of writing this post, Xcode is giving me the error `'llvm-c/Analysis.h' file not found`, while `swift build` is working just fine ¯\_(ツ)_/¯.
+> As of writing this post, Xcode is giving me the error `'llvm-c/Analysis.h' file not found`, while `swift build` is working just fine. Deleting the Xcode project file and creating a new one via `swift package generate-xcodeproj` seems to fix the problem though.
 
 # Writing the IR-Generator
 
-When we wrote our parser, we created a transformation from tokens to AST nodes. The AST then represents the *entire* parsed program. So if we want to translate a *Kaleidoscope* program to LLVM-IR, we only need to map the AST to LLVM-IR. And our AST is really simply:
+When we wrote our parser, we created a transformation from tokens to AST nodes. The AST then represents the *entire* parsed program. So if we want to translate a *Kaleidoscope* program into LLVM-IR, we only need to map the AST to LLVM-IR. And our AST is really simply:
 
 ```swift
 // Parser.swift
@@ -226,7 +226,10 @@ public struct Program {
 }
 ```
 
-All we have are external definitions, functions and expressions.
+All we have are external definitions, functions and expressions. So what we need to do is to define IR-generation methods for these different types of nodes, traverse the AST and collect the IR as output.
+
+> *Note:*  
+> This is an example of the [visitor pattern](https://en.wikipedia.org/wiki/Visitor_pattern), which is commonly used in compilers.
 
 ## Structure
 
@@ -306,7 +309,7 @@ Let's start by generating IR for the simplest type of expression, a `.number`:
 extension IRGenerator {
 
     private func generateNumberExpression(_ number: Double) -> LLVMValueRef {
-        return LLVMConstReal(floatType, number)
+        return LLVMConstReal(doubleType, number)
     }
 }
 ```
@@ -329,24 +332,24 @@ What if we *did* want to support multiple types though, specifically multiple di
 > All `Value`s have a `Type`. `Type` is not a subclass of `Value`. [↗](https://llvm.org/doxygen/classllvm_1_1Value.html)
 
 So just like with `LLVMValueRef`, `LLVMTypeRef` is the base type for an an entire [class hierarchy](https://llvm.org/doxygen/classllvm_1_1Type.html) which in this case represents *types* instead of *values*.  
-Creating instances of `LLVMTypeRef`s basically works like creating `LLVMValueRef`s, by using a special LLVM provided function. E.g. that undefined `floatType` value used above should simply be the `LLVMTypeRef` returned by `LLVMFloatTypeInContext`. And since we're going to be using that exact type in a couple of places, let's store a reference to it in our IR-generator:
+Creating instances of `LLVMTypeRef`s basically works like creating `LLVMValueRef`s, by using a special LLVM provided function. E.g. that undefined `doubleType` value used above should simply be the `LLVMTypeRef` returned by `LLVMDoubleTypeInContext`. And since we're going to be using that exact type in a couple of places, let's store a reference to it in our IR-generator:
 
 ```swift
 public final class IRGenerator {
 
     // ...
 
-    private let floatType: LLVMTypeRef
+    private let doubleType: LLVMTypeRef
 
     public init(ast: Program) {
         // ...
 
-        floatType = LLVMFloatTypeInContext(context)
+        doubleType = LLVMFDoubleTypeInContext(context)
     }
 }
 ```
 
-The documentation for `LLVMFloatTypeInContext` states that it returns a 32-bit floating-point type. If we ever want to use a different floating-point type we can just call `LLVMHalfTypeInContext`, `LLVMDoubleTypeInContext`, `LLVMFP128TypeInContext`, etc. instead.
+The documentation for `LLVMDoubleTypeInContext` states that it returns a 64-bit floating-point type. If we ever want to use a different floating-point type we can just call `LLVMHalfTypeInContext`, `LLVMFloatTypeInContext`, `LLVMFP128TypeInContext`, etc. instead.
 
 So now that we have a grasp on the fundamentals of working with `LLVMValueRef`s, let's look at some more interesting examples.
 
@@ -379,7 +382,26 @@ Next we create the IR-representations of the instructions corresponding to the g
 > An instruction builder represents a point within a basic block and is the exclusive means of building instructions using the C interface. [↗](https://llvm.org/doxygen/group__LLVMCCoreInstructionBuilder.html#details)
 
 In this case (of only creating single instructions like `+` or `%`) the
-instruction builder's use isn't really apparent yet. We can basically create the instructions' IR like we did for the constant values above, by calling a special LLVM function that returns the corresponding `LLVMValueRef`. Only this time, we also have to pass along our `LLVMBuilderRef` instance as well some string as last parameter. The point of those strings will become more apparent in a moment, when we generate the IR for if-else expressions. For now all you need to know is that the string used above are arbitrary, we could have also chosen `"asdf"`, `"123"`, etc.
+instruction builder's use isn't really apparent yet. We can basically create the instructions' IR like we did for the constant values above, by calling a special LLVM function that returns the corresponding `LLVMValueRef`. Only this time, we also have to pass along our `LLVMBuilderRef` instance as well some string as last parameter.  
+Those strings are used as names for the resulting values in the IR. So e.g. if we had a program containing ...
+
+```
+a + b
+c + d
+e + f
+```
+
+... the IR would look like ...
+
+```
+%sum = fadd double %a, %b
+%sum1 = fadd double %c, %d
+%sum2 = fadd double %e, %f
+```
+
+So the name we have provided for sums (namely `sum`) is used as a hint for naming the result of the operation.
+
+> Local value names for instructions are purely optional, but it makes it much easier to read the IR dumps. [↗](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#id3)
 
 #### If-Else Expressions
 
@@ -543,7 +565,7 @@ extension IRGenerator {
             /* builder:   */ builder,
             /* predicate: */ LLVMRealONE,
             /* lhs:       */ try generate(expression: condition),
-            /* rhs:       */ LLVMConstReal(floatType, 0) /* = false */,
+            /* rhs:       */ LLVMConstReal(doubleType, 0) /* = false */,
             /* label:     */ "condition"
         )
 
@@ -570,7 +592,7 @@ extension IRGenerator {
         LLVMBuildBr(builder, mergeBlock)
 
         LLVMPositionBuilderAtEnd(builder, mergeBlock)
-        let phiNode = LLVMBuildPhi(builder, floatType, "result")!
+        let phiNode = LLVMBuildPhi(builder, doubleType, "result")!
         var phiValues: [LLVMValueRef?] = [try generate(expression: then), try generate(expression: `else`)]
         var phiBlocks = [thenBlock, elseBlock]
         LLVMAddIncoming(phiNode, &phiValues, &phiBlocks, 2)
@@ -747,7 +769,7 @@ extension IRGenerator {
 
 ### Function Prototypes
 
-As mentioned above, part of a modules functionality is to act as a container to which we can add function definitions. We also have the option of just adding a function declaration though, i.e. a prototype. And of course that's exactly what we want when we encounter a `Prototype` AST node. Generating IR for a prototype is relatively straight forward:
+As mentioned above, part of a modules functionality is to act as a container to which we can add function definitions. We also have the option of just adding a function declaration though, i.e. a prototype. And of course that's exactly what we want when we encounter a `Prototype` AST node. Aside from one technicality, generating IR for a prototype is relatively straight forward:
 
 ```swift
 extension IRGenerator {
@@ -758,24 +780,33 @@ extension IRGenerator {
             throw Error.invalidRedeclarationOfFunction(prototype.name)
         }
 
-        var parameters = [LLVMTypeRef?](repeating: floatType, count: prototype.parameters.count)
+        var parameters = [LLVMTypeRef?](repeating: doubleType, count: prototype.parameters.count)
 
         let signature = LLVMFunctionType(
-            floatType,
+            doubleType,
             &parameters,
             UInt32(prototype.parameters.count),
             false
         )
 
-        return LLVMAddFunction(module, prototype.name, signature)
+        let function = LLVMAddFunction(module, prototype.name, signature)!
+
+        // Adds a name to each parameter, so that the IR shows their names for them instead of just
+        // `%0`, `%1`, etc.
+        for (index, name) in prototype.parameters.enumerated() {
+            let parameterValue = LLVMGetParam(function, UInt32(index))
+            LLVMSetValueName2(parameterValue, name, name.count)
+        }
+
+        return function
     }
 }
 ```
 
 First of all we mark the method `@discardableResult` because we *will* need the resulting `LLVMValueRef` when generating the IR for function definitions, but we *won't* need it when generating IR for external function declarations.  
 The leading guard-statement just enforces the (context sensitive) rule, that functions can't be declared multiple times.  
-The `parameters` are a list of `LLVMTypeRef`s which will be needed to define the function's type signature. Since the only type in *Kaleidoscope* is our previously defined `floatType`, the parameter type list of a function is just the `floatType` repeated as many times as there are parameters.  
-Now to the perhaps more interesting part of the method. Just as we used `LLVMFloatTypeInContext` to define the `floatType`, we use `LLVMFunctionType` to define a function type.
+The `parameters` are a list of `LLVMTypeRef`s which will be needed to define the function's type signature. Since the only type in *Kaleidoscope* is our previously defined `doubleType`, the parameter type list of a function is just the `doubleType` repeated as many times as there are parameters.  
+Now to the perhaps more interesting part of the method. Just as we used `LLVMDoubleTypeInContext` to define the `doubleType`, we use `LLVMFunctionType` to define a function type.
 
 > The function is defined as a tuple of a return Type, a list of parameter types, and whether the function is variadic. [↗](https://llvm.org/doxygen/group__LLVMCCoreTypeFunction.html#ga8b0c32e7322e5c6c1bf7eb95b0961707)
 
@@ -792,6 +823,34 @@ Using this (function type) signature, we can add a function *declaration* to our
 >    }
 > }
 > ```
+
+Now that technicality I mentioned above is the for-loop. All this loop does is set a name for each of the function parameters, so that the IR looks nice. Without this code, a function like ...
+
+```
+def my_func(x, y) x + y;
+```
+
+... would be generated as ...
+
+```
+define double @my_func(double %0, double %1) {
+entry:
+  %sum = fadd double %0, %1
+  ret double %sum
+}
+```
+
+But by calling `LLVMSetValueName2` for each parameter, we get ...
+
+```
+define double @my_func(double %x, double %y) {
+entry:
+  %sum = fadd double %x, %y
+  ret double %sum
+}
+```
+
+That's literally all there is to it.
 
 ### Functions
 
@@ -833,6 +892,10 @@ Next we get to work with the symbol table again. Remember, the symbol table was 
 
 Populating the symbol table requires a little bit more thought. What we're doing is... For each of the function's parameters (`function.head.parameters.enumerated()`), get the `LLVMValueRef` (by calling `LLVMGetParam`) that will be used for that parameter's *argument*. Then associate that value with the parameter's name in the symbol table. Those `LLVMValueRef`s will be populated for us when calling `LLVMBuildCall`, where we have to provide the actual arguments. So basically what we're doing here is associating each parameter name with a *handle* to the argument-to-be.  
 The remainder of the generator method is more pleasant again. First we move the instruction builder to the newly created `entryBlock`. And then, since the only kinds of statements we have in *Kaleidoscope* are expressions, we build a single return statement, that returns whatever value the `function.body` evaluates to.
+
+The way we've implemented `generate(function:)` leads to a notable restriction on *Kaleidoscope* programs - function overloading is not possible. I.e. if we have one function `my_func(x)` and another `my_func(a, b)`, the IR generator will throw an error. We will not fix this problem in this tutorial, but as [LLVM's tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html#id4) puts it:
+
+> There are a number of ways to fix this bug, see what you can come up with!
 
 ## Program Generation
 
@@ -899,8 +962,9 @@ While `printf` was declared externally, `main` will now be defined by us manuall
 > *Side note:*  
 > If you're not familiar with C's `printf`, don't worry. For our use case, you
 > can pretend that it's a function whose first argument must be the constant
-> `"%f\n"` and second argument must be a floating-point value that will be
+> `"%f\n"` and second argument must be a `double` value that will be
 > printed.
+> Note that `printf` has no format specifier for `float`s - If you pass it a `float` it will just print the value `0`!
 
 Adding `main`'s body is analogue to the way we did it in `generate(function:)`:
 
@@ -1011,19 +1075,19 @@ source_filename = "kaleidoscope"
 
 @format = private unnamed_addr constant [4 x i8] c"%f\0A\00", align 1
 
-define float @double(float %0) {
+define double @double(double %x) {
 entry:
-  %product = fmul float 2.000000e+00, %0
-  ret float %product
+  %product = fmul double 2.000000e+00, %x
+  ret double %product
 }
 
-define float @is_equal(float %0, float %1) {
+define double @is_equal(double %x, double %y) {
 entry:
   br label %if
 
 if:                                               ; preds = %entry
-  %difference = fsub float %0, %1
-  %condition = fcmp one float %difference, 0.000000e+00
+  %difference = fsub double %x, %y
+  %condition = fcmp one double %difference, 0.000000e+00
   br i1 %condition, label %then, label %else
 
 then:                                             ; preds = %if
@@ -1033,20 +1097,20 @@ else:                                             ; preds = %if
   br label %merge
 
 merge:                                            ; preds = %else, %then
-  %result = phi float [ 0.000000e+00, %then ], [ 1.000000e+00, %else ]
-  ret float %result
+  %result = phi double [ 0.000000e+00, %then ], [ 1.000000e+00, %else ]
+  ret double %result
 }
 
 define void @main() {
 entry:
-  %double = call float @double(float 6.000000e+00)
-  %print = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), float %double)
+  %double = call double @double(double 6.000000e+00)
+  %print = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), double %double)
   br label %if
 
 if:                                               ; preds = %entry
-  %double1 = call float @double(float 1.000000e+00)
-  %is_equal = call float @is_equal(float %double1, float 2.000000e+00)
-  %condition = fcmp one float %is_equal, 0.000000e+00
+  %double1 = call double @double(double 1.000000e+00)
+  %is_equal = call double @is_equal(double %double1, double 2.000000e+00)
+  %condition = fcmp one double %is_equal, 0.000000e+00
   br i1 %condition, label %then, label %else
 
 then:                                             ; preds = %if
@@ -1056,8 +1120,8 @@ else:                                             ; preds = %if
   br label %merge
 
 merge:                                            ; preds = %else, %then
-  %result = phi float [ 1.000000e+02, %then ], [ 0.000000e+00, %else ]
-  %print2 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), float %result)
+  %result = phi double [ 1.000000e+02, %then ], [ 0.000000e+00, %else ]
+  %print2 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @format, i32 0, i32 0), double %result)
   ret void
 }
 
@@ -1074,7 +1138,7 @@ There is one big caveat to our IR though - it might be incorrect. And I don't ju
 
 > The LLVM infrastructure provides a **verification pass** that may be used to verify that an LLVM module is well formed.
 
-That is, we can use the function builder to build IR that is invalid. So at some point we have to run a verifier that makes sure that our IR is valid. Luckily LLVM provides a verifier that we can just use as is. But module verification and generation of executables will all be covered in thee next part of this series.
+That is, we can use the function builder to build IR that is invalid. So at some point we have to run a verifier that makes sure that our IR is valid. Luckily LLVM provides a verifier that we can just use as is. But module verification and generation of executables will all be covered in the next part of this series.
 
 Until then, thanks for reading!
 
