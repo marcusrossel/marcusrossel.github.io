@@ -23,6 +23,7 @@ html, html[data-theme="light"], {
     --attribute: #BF8555;
     --builtin: #FDEF3F;
     --generic: #777;
+    --symbolicconstant: #EEA71D;
 }
 
 // Used for dark mode.
@@ -57,6 +58,7 @@ html[data-theme="dark"] {
     --attribute: #BF8555;
     --builtin: #FDEF3F;
     --generic: #aaa;
+    --symbolicconstant: #FFCC33;
 }
 
 // Fonts
