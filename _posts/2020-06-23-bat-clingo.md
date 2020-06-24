@@ -437,7 +437,15 @@ Models       : 1
 ---
 
 As you can see, the topic of types is quite endless once you dive in. Especially in a strictly declarative language like *clingo* you can compose these systems quite neatly without worrying about any control *flow*.   
-On the other hand, types can become quite tricky once you extend their power even a little. So there are many edge cases that could cause problems if unheeded.     
+On the other hand, types can become quite tricky once you extend their power even a little. So there are many edge cases that could cause problems if unheeded.
+
+> *Update:*  
+> For example I just noticed that we still have the problem of multiple inheritance when it comes to this rule:
+> ```clingo
+> property(P, O, V) :- property(P, T, V), groundtype(O, T), not define(P, O, _).
+> ```
+> ... since we haven't restricted the number of ground-types an object can have.
+
 But regardless, I find types to be really fun to play around with, and perhaps you now feel inclined to do the same. After all, the system we've built above is really incomplete 😉
 
 Thanks for reading!
