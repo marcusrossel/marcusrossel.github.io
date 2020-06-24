@@ -252,11 +252,11 @@ Models       : 1
 # Shortcomings and Extensions
 
 As neat as the program above may look, it really only works within the context of the given statements. If we were to change almost anything about the types, their hierarchy or the associated predicates, our curreng implementation would break.  
-So to conclude this post, let's look at some of the problems the current implementation has, as well as how we could extend it. 
+So to conclude this post, let's look at some of the problems the current implementation has, as well as how we could extend it.
 
 ### Deeper Type Hierarchies
 
-In the program about Tom, the deepest type hierarchy only had a depth of 2. If we added just a single new type to that hierarchy, the program wouldn't work correctly. Say we add a new `animal` type: 
+In the program about Tom, the deepest type hierarchy only had a depth of 2. If we added just a single new type to that hierarchy, the program wouldn't work correctly. Say we add a new `animal` type:
 
 ```clingo
 subtype(mammal, animal).
@@ -282,7 +282,7 @@ Another problem that our *"type system"* (big quotes) would potentially have to 
 ```prolog
 subtype(lion, pet).
 subtype(lion, animal).
-type(dan, lion). 
+type(dan, lion).
 ```
 
 Multiple inheritance has a reputation for being tricky, e.g. by virtue of the [diamond problem](https://en.wikipedia.org/wiki/Multiple_inheritance#The_diamond_problem). So optimally we'd like to restrict our subtyping model to enforce single inheritance:
@@ -291,7 +291,7 @@ Multiple inheritance has a reputation for being tricky, e.g. by virtue of the [d
 P1 == P2 :- subtype(T, P1), subtype(T, P2).
 ```
 
-All that this line tells us is that if some type `T` has parents `P1` *and* `P2`, then those parents must actually be the same type. So in effect any type can have at most one parent, which disallows multiple inheritance. 
+All that this line tells us is that if some type `T` has parents `P1` *and* `P2`, then those parents must actually be the same type. So in effect any type can have at most one parent, which disallows multiple inheritance.
 
 ### Non-Overriding Subtypes
 
@@ -302,7 +302,7 @@ subtype(lion, mammal).
 type(dan, lion).
 ```
 
-Then we would expect this new rule to be sufficient for Dan to not fly, since we've already defined that `mammal`s cannot fly. But this is in fact not sufficient, since the non-flyingness of `mammal`s is only defined for objects whose *ground-type* is `mammal`, and we haven't added a separate definition relative to `lion`s. 
+Then we would expect this new rule to be sufficient for Dan to not fly, since we've already defined that `mammal`s cannot fly. But this is in fact not sufficient, since the non-flyingness of `mammal`s is only defined for objects whose *ground-type* is `mammal`, and we haven't added a separate definition relative to `lion`s.
 As it turns out, the ground-type of an object is not *generally* sufficient for determining which definition of a predicate should be used for that object. Say we had the following hierarchy:
 
 ```
@@ -318,7 +318,7 @@ lion      -  inherits fly from mammal
 ```
 
 To determine what the correct definition of `fly` is for `dan`, we need to know what the definition is for `lion`s. And since `lion`s inherit their `fly`-definition from `mammals`, we in turn need to know their defintion. I.e. we need to propagate definitions down the hierarchy tree until a subtype implements a definition of its own - aka overrides it.  
-This again poses the problem of defining predicates *about predicates*. So we'll solve it the same way as we did with types, by replacing the predicates with symbolic constants that we'll now call *properties*. 
+This again poses the problem of defining predicates *about predicates*. So we'll solve it the same way as we did with types, by replacing the predicates with symbolic constants that we'll now call *properties*.
 
 #### Formalizing Properties
 
@@ -341,7 +341,7 @@ property(fly, dan, false).
 property(coordinates, tom, 145, 23).
 ```
 
-... tells us that the `coordinates` of `tom` are `145, 23`. 
+... tells us that the `coordinates` of `tom` are `145, 23`.
 
 > *Note:*
 > Whereas before `not fly(dan).` meant that Dan can't fly, `not property(fly, dan, _).` would now mean that the property `fly` is not defined on object `dan`.
@@ -369,29 +369,35 @@ If an object `O` of type `T` does not define a property `P`, then `O` inherits `
 
 #### Formalizing Overrides
 
-Using properties, we can formalize the concept of *overriding*, which will allow us to select the right definition of each property within a type hierarchy. 
+Using properties, we can formalize the concept of *overriding*, which will allow us to select the right definition of each property within a type hierarchy.
 
-We say that a type or object `X` overrides a property `P`, whenever there is a *"manual definition"* of `P` relative to `X`. All we mean by *"manual definition"* is that the definition was literally written into the program, and not inferred by it. 
+We say that a type or object `X` overrides a property `P`, whenever there is a *"manual definition"* of `P` relative to `X`. All we mean by *"manual definition"* is that the definition was literally written into the program, and not inferred by it.
 
-In order to detect overriding we'll just add a new predicate `define` that is used to define properties on a type: 
+In order to detect overriding we'll just add a new predicate `define` that is used to define properties on a type:
 
 ```prolog
-property(P, X, V) :- define(P, X, V). 
+property(P, X, V) :- define(P, X, V).
 ```
 
-So whenever we define a property on a type or object, we make sure the property is set but we also remember which types manually defined the property by virtue of the `define` predicate. 
+So whenever we define a property on a type or object, we make sure the property is set but we also remember which types manually defined the property by virtue of the `define` predicate.
 
 #### Properties in a Type Hierarchy
 
-Getting back to the crux of the problem, we now want to make sure properties of some super-type are propagated down its type hierarchy only to the point of an override. Now that we have defined a concept of overrides, this becomes surprisingly easy:
+Getting back to the crux of the problem, we now want to make sure that properties of some super-type are propagated down its type hierarchy only to the point of an override. Now that we have defined a concept of overrides, this becomes surprisingly easy:
 
 ```prolog
-property(P, S, V) :- property(P, T, V), subtype(S, T), not define(P, S, _). 
-property(P, O, V) :- property(P, T, V), type(O, T), not define(P, O, _).
+property(P, S, V) :- property(P, T, V), subtype(S, T), not define(P, S, _).
+property(P, O, V) :- property(P, T, V), groundtype(O, T), not define(P, O, _).
 ```
 
-The first rule implements property propagation for types. If propagates the definition of property `P` from type `T` to subtype `S`, if `S` does not override `P`.   
-The second rule just does the same for objects. If an object `O` does not define a property `P` it inherits that definition from its type. 
+The first rule implements property propagation for types. It propagates the definition of property `P` from type `T` to subtype `S`, only if `S` does not override `P`.   
+The second rule just does the same for objects. If an object `O` does not define a property `P` it inherits that definition from its ground-type. Note that this is basically analogous to our initially faulty approach where:
+
+```prolog
+fly(B) :- groundtype(B, bat).
+```
+
+But now we know that every type inherits its super-type's properties, so this approach works fine.
 
 # Conclusion
 
@@ -407,12 +413,26 @@ type(V, T) :- type(V, S), subtype(S, T).
 subtype(S, T) :- subtype(S, M), subtype(M, T).
 P1 == P2 :- subtype(T, P1), subtype(T, P2).
 
-property(P, X, V) :- define(P, X, V). 
-property(P, S, V) :- property(P, T, V), subtype(S, T), not define(P, S, _). 
-property(P, O, V) :- property(P, T, V), type(O, T), not define(P, O, _).
+groundtype(V, T) :- type(V, T), not midtype(V, T).
+midtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
+
+property(P, X, V) :- define(P, X, V).
+property(P, S, V) :- property(P, T, V), subtype(S, T), not define(P, S, _).
+property(P, O, V) :- property(P, T, V), groundtype(O, T), not define(P, O, _).
 ```
 
-... which IMHO is really cool. The original four statements are now super clear and our *"type system"* consists of only 6 rules. 
+... which IMHO is really cool. The original four statements are now super clear and our *"type system"* consists of only 8 rules. And *clingo* correctly infers a bunch of things:
+
+```terminal
+Solving...
+Answer: 1
+subtype(bat,mammal) type(tom,bat) type(tom,mammal) midtype(tom,mammal) groundtype(tom,bat) define(fly,bat,true) define(fly,mammal,false) property(fly,bat,true) property(fly,mammal,false) property(fly,tom,true)
+SATISFIABLE
+
+Models       : 1
+```
+
+... most importantly `property(fly, tom, true)`.
 
 ---
 
