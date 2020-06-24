@@ -210,12 +210,13 @@ It doesn't work because *each* rule of a predicate definition is enabled for *al
 And this is where our type-based variant of the program is more powerful than the predicate-based ones before. Where as before we couldn't express *any* relationship between the predicates `bat` and `mammal` explicitly, we now can. What were previously predicates are now just symbolic constants `bat` and `mammal`, so we can define predicates *about them*. Infact we already have with the `subtype` predicate. Moreover, to fix the problem of our current program in a general way, we can define a predicate that gives us the *most specific* type of a given value:
 
 ```prolog
-groundtype(V, T) :- type(V, T), not midtype(V, T).
-midtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
+groundtype(V, T) :- type(V, T), not -groundtype(V, T).
+-groundtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
 ```
 
-Here we call the most specific type of an object its `groundtype`. The precise definition is a bit technical, but not really that important. We say that `T` is a ground-type for `V` if `V` has type `T` and `T` is not a `midtype` for `V`.  
-A type `T` is a mid-type for `V` if there is some subtype `S` of `T` that is also a type of `V`.  
+Here we call the most specific type of an object its `groundtype`. The precise definition is a bit technical, but not really that important.  
+We say that type `T` is *not* a ground-type for `V` (written `-groundtype`) if there is some subtype `S` of `T` that is also a type of `V`. And then we define `T` to be a ground-type for `V` if `V` has type `T` and `T` is not a `-groundtype` for `V`.
+
 So in consequence `groundtype` contains all pairs `V`, `T` such that there is no other type `S` of `V` that is subtype of `T` - i.e. `T` is a most specific type of `V`.
 
 > *Note:*  
@@ -228,8 +229,8 @@ type(tom, bat).
 subtype(bat, mammal).
 type(V, T) :- type(V, S), subtype(S, T).
 
-groundtype(V, T) :- type(V, T), not midtype(V, T).
-midtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
+groundtype(V, T) :- type(V, T), not -groundtype(V, T).
+-groundtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
 
 fly(B) :- groundtype(B, bat).
 not fly(M) :- groundtype(M, mammal).
@@ -241,7 +242,7 @@ And finally, if we run this through *clingo*, we get ...
 marcus@~: clingo tom.lp
 Solving...
 Answer: 1
-subtype(bat,mammal) type(tom,bat) type(tom,mammal) midtype(tom,mammal) groundtype(tom,bat) fly(tom)
+subtype(bat,mammal) type(tom,bat) type(tom,mammal) -groundtype(tom,mammal) groundtype(tom,bat) fly(tom)
 SATISFIABLE
 
 Models       : 1
@@ -353,8 +354,8 @@ type(tom, bat).
 subtype(bat, mammal).
 type(V, T) :- type(V, S), subtype(S, T).
 
-groundtype(V, T) :- type(V, T), not midtype(V, T).
-midtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
+groundtype(V, T) :- type(V, T), not -groundtype(V, T).
+-groundtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
 
 property(fly, B, true) :- groundtype(B, bat).
 property(fly, M, false) :- groundtype(M, mammal).
@@ -413,8 +414,8 @@ type(V, T) :- type(V, S), subtype(S, T).
 subtype(S, T) :- subtype(S, M), subtype(M, T).
 P1 == P2 :- subtype(T, P1), subtype(T, P2).
 
-groundtype(V, T) :- type(V, T), not midtype(V, T).
-midtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
+groundtype(V, T) :- type(V, T), not -groundtype(V, T).
+-groundtype(V, T) :- type(V, T), type(V, S), subtype(S, T).
 
 property(P, X, V) :- define(P, X, V).
 property(P, S, V) :- property(P, T, V), subtype(S, T), not define(P, S, _).
@@ -426,7 +427,7 @@ property(P, O, V) :- property(P, T, V), groundtype(O, T), not define(P, O, _).
 ```terminal
 Solving...
 Answer: 1
-subtype(bat,mammal) type(tom,bat) type(tom,mammal) midtype(tom,mammal) groundtype(tom,bat) define(fly,bat,true) define(fly,mammal,false) property(fly,bat,true) property(fly,mammal,false) property(fly,tom,true)
+subtype(bat,mammal) type(tom,bat) type(tom,mammal) -groundtype(tom,mammal) groundtype(tom,bat) define(fly,bat,true) define(fly,mammal,false) property(fly,bat,true) property(fly,mammal,false) property(fly,tom,true)
 SATISFIABLE
 
 Models       : 1
