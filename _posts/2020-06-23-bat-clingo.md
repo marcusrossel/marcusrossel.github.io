@@ -53,7 +53,7 @@ One approach we can take to fix the inconsistency above is to define what *"usua
 
 ## Mammalness Dominates
 
-First we could say that the *"mammalness"* of an object is more important than its *"batness"*. So anytime we define a fact about an object that is a `bat` *and* a `mammal`, use the definition that is `mammal`-related and not the one that is `bat`-related. This leads out program to look as follows:
+First we could say that the *"mammalness"* of an object is more important than its *"batness"*. So anytime we define a fact about an object that is a `bat` *and* a `mammal`, use the definition that is `mammal`-related and not the one that is `bat`-related. This leads our program to look as follows:
 
 ```prolog
 bat(tom).            
